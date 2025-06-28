@@ -6,6 +6,7 @@ import session from 'express-session';
 import { initDatabase, findOrCreateUser, findUserById, getBots, addMessage, getMessagesForUserBot, addBot, updateBot, deleteBot, getBotById, checkMessageLimit, getActivatedBotsForUser, activateBotForUser, addActivationKey, getConversationsForUserBot, deleteConversation, updateConversationTitle, getConversationById, addConversation, saveUserBotPreferences, getUserBotPreferences } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';
+import SQLiteStore from 'connect-sqlite3';
 
 dotenv.config();
 
@@ -19,7 +20,7 @@ function isAuthenticated(req, res, next) {
   res.status(401).json({ message: 'Non authentifié' });
 }
 
-// Configurer CORS pour autoriser les requêtes depuis le frontend
+// Configurer CORS pour autoriser les requêtes depuis le frontend http
 app.use(cors({
   origin: 'http://www.quran-pro.harrmos.com',
   credentials: true
@@ -28,8 +29,9 @@ app.use(cors({
 // Ajouter le middleware pour parser le JSON
 app.use(express.json());
 
-// Configurer le middleware de session
+// Configurer le middleware de session avec un store persistant (SQLite)
 app.use(session({
+  store: new SQLiteStore({ db: 'sessions.db', dir: './db' }),
   secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
   resave: false,
   saveUninitialized: false,
@@ -40,11 +42,11 @@ app.use(session({
   }
 }));
 
-// Ajout de logs pour la configuration de session
 console.log('Configuration de session:', {
-  secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
+  origin: 'http://www.quran-pro.harrmos.com',
   secure: true,
   sameSite: 'None',
+  store: 'SQLite',
   maxAge: 24 * 60 * 60 * 1000
 });
 
@@ -132,11 +134,10 @@ app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'em
 
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login' }), // Redirige vers une page de login en cas d'échec
+  passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
-    // Authentification réussie, rediriger vers la page d'accueil ou un tableau de bord de l'application frontend
-    // Tu devras peut-être rediriger vers une URL de ton application frontend
-res.send(`
+    // Authentification réussie, renvoyer un HTML qui redirige côté client (et permet au navigateur de stocker le cookie)
+    res.send(`
       <html>
         <head>
           <meta http-equiv="refresh" content="0;url=http://www.quran-pro.harrmos.com/" />
@@ -148,7 +149,8 @@ res.send(`
           Redirection...
         </body>
       </html>
-    `);  }
+    `);
+  }
 );
 
 // Route de déconnexion
