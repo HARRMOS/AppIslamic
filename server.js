@@ -7,6 +7,7 @@ import { initDatabase, findOrCreateUser, findUserById, getBots, addMessage, getM
 import cors from 'cors';
 import openai from './openai.js';
 import SQLiteStore from 'connect-sqlite3';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
@@ -18,6 +19,21 @@ function isAuthenticated(req, res, next) {
     return next();
   }
   res.status(401).json({ message: 'Non authentifié' });
+}
+
+// Middleware pour vérifier le JWT
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, process.env.JWT_SECRET || 'jwtsecret', (err, user) => {
+      if (err) return res.sendStatus(403);
+      req.user = user;
+      next();
+    });
+  } else {
+    res.sendStatus(401);
+  }
 }
 
 // Configurer CORS pour autoriser les requêtes depuis le frontend http
@@ -550,6 +566,25 @@ app.get('/api/messages/:botId/:conversationId/search', isAuthenticated, async (r
     console.error('Erreur lors de la recherche de messages:', error);
     res.status(500).send('Erreur interne du serveur.');
   }
+});
+
+// Route de callback Google qui redirige vers le frontend avec le token JWT dans l'URL
+app.get('/auth/google/jwt',
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  (req, res) => {
+    const token = jwt.sign({
+      id: req.user.id,
+      name: req.user.name,
+      email: req.user.email
+    }, process.env.JWT_SECRET || 'jwtsecret', { expiresIn: '24h' });
+    // Redirige vers le frontend avec le token dans l'URL
+    res.redirect(`http://www.quran-pro.harrmos.com/auth?token=${token}`);
+  }
+);
+
+// Exemple de route protégée par JWT
+app.get('/api/protected', authenticateJWT, (req, res) => {
+  res.json({ message: 'Accès autorisé', user: req.user });
 });
 
 const PORT = process.env.PORT || 3000;
