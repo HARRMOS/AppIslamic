@@ -136,8 +136,19 @@ app.get('/auth/google/callback',
   (req, res) => {
     // Authentification réussie, rediriger vers la page d'accueil ou un tableau de bord de l'application frontend
     // Tu devras peut-être rediriger vers une URL de ton application frontend
-    res.redirect(process.env.FRONTEND_URL || 'http://localhost:5173/'); // Utiliser l'URL du frontend
-  }
+res.send(`
+      <html>
+        <head>
+          <meta http-equiv="refresh" content="0;url=http://www.quran-pro.harrmos.com/" />
+          <script>
+            window.location.href = 'http://www.quran-pro.harrmos.com/';
+          </script>
+        </head>
+        <body>
+          Redirection...
+        </body>
+      </html>
+    `);  }
 );
 
 // Route de déconnexion
