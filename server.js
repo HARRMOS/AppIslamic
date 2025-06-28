@@ -21,7 +21,7 @@ function isAuthenticated(req, res, next) {
 
 // Configurer CORS pour autoriser les requêtes depuis le frontend
 app.use(cors({
-  origin: 'http://localhost:5173',
+  origin: 'http://www.quran-pro.harrmos.com',
   credentials: true
 }));
 
@@ -34,16 +34,16 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,
-    sameSite: 'Lax',
-    maxAge: 24 * 60 * 60 * 1000 // 24 heures
+    secure: true,           // OBLIGATOIRE sur Render (HTTPS)
+    sameSite: 'None',       // OBLIGATOIRE pour cross-domain
+    maxAge: 24 * 60 * 60 * 1000
   }
 }));
 
 // Ajout de logs pour la configuration de session
 console.log('Configuration de session:', {
   secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
-  secure: process.env.NODE_ENV === 'production',
+  secure: true,
   sameSite: 'None',
   maxAge: 24 * 60 * 60 * 1000
 });
