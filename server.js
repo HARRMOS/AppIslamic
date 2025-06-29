@@ -34,8 +34,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,
-    sameSite: 'Lax',
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 heures
   }
 }));
@@ -44,7 +44,7 @@ app.use(session({
 console.log('Configuration de session:', {
   secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'None',
+  sameSite: process.env.NODE_ENV === 'production' ? 'None' : 'Lax',
   maxAge: 24 * 60 * 60 * 1000
 });
 
@@ -137,7 +137,10 @@ app.get('/auth/google/callback',
   (req, res) => {
     // Authentification réussie, rediriger vers la page d'accueil ou un tableau de bord de l'application frontend
     // Tu devras peut-être rediriger vers une URL de ton application frontend
-    res.redirect(process.env.FRONTEND_URL || 'http://localhost:5173/'); // Utiliser l'URL du frontend
+    const frontendUrl = process.env.NODE_ENV === 'production' 
+      ? 'https://www.quran-pro.harrmos.com' 
+      : (process.env.FRONTEND_URL || 'http://localhost:5173/');
+    res.redirect(frontendUrl);
   }
 );
 
