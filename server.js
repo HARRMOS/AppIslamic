@@ -140,13 +140,21 @@ app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'em
 
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login' }), // Redirige vers une page de login en cas d'échec
+  passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
-    // Authentification réussie, rediriger vers la page d'accueil ou un tableau de bord de l'application frontend
-    // Tu devras peut-être rediriger vers une URL de ton application frontend
-    const frontendUrl = 'https://www.quran-pro.harrmos.com'; // Forcer l'URL de production
-    console.log('Google callback - Redirection vers:', frontendUrl);
-    res.redirect(frontendUrl);
+    // Répondre en 200 avec un HTML qui redirige côté client (pour que le cookie soit bien set)
+    const frontendUrl = 'https://www.quran-pro.harrmos.com';
+    res.send(`
+      <html>
+        <head>
+          <meta http-equiv="refresh" content="0;url=${frontendUrl}" />
+          <script>window.location.href = "${frontendUrl}";</script>
+        </head>
+        <body>
+          Redirection...
+        </body>
+      </html>
+    `);
   }
 );
 
