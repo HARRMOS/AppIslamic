@@ -41,8 +41,9 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: true, // Forcer secure en production sur Render
-    sameSite: 'None', // Forcer None pour cross-domain
+    secure: true,
+    sameSite: 'None',
+    domain: '.onrender.com',
     maxAge: 24 * 60 * 60 * 1000 // 24 heures
   }
 }));
