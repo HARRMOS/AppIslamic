@@ -3,11 +3,9 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import dotenv from 'dotenv';
 import session from 'express-session';
-import { initDatabase, findOrCreateUser, findUserById, getBots, addMessage, getMessagesForUserBot, addBot, updateBot, deleteBot, getBotById, checkMessageLimit, getActivatedBotsForUser, activateBotForUser, addActivationKey, getConversationsForUserBot, deleteConversation, updateConversationTitle, getConversationById, addConversation, saveUserBotPreferences, getUserBotPreferences } from './database.js';
+import { initDatabase, findOrCreateUser, findUserById, getBots, addMessage, getMessagesForUserBot, addBot, updateBot, deleteBot, getBotById, checkMessageLimit, getActivatedBotsForUser, activateBotForUser, addActivationKey, getConversationsForUserBot, deleteConversation, updateConversationTitle, getConversationById, addConversation, saveUserBotPreferences, getUserBotPreferences, getMySQLUserId, syncUserToMySQL, updateUserMySQLId } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';
-import SQLiteStore from 'connect-sqlite3';
-import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
@@ -21,48 +19,32 @@ function isAuthenticated(req, res, next) {
   res.status(401).json({ message: 'Non authentifié' });
 }
 
-// Middleware pour vérifier le JWT
-function authenticateJWT(req, res, next) {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    jwt.verify(token, process.env.JWT_SECRET || 'jwtsecret', (err, user) => {
-      if (err) return res.sendStatus(403);
-      req.user = user;
-      next();
-    });
-  } else {
-    res.sendStatus(401);
-  }
-}
-
-// Configurer CORS pour autoriser les requêtes depuis le frontend http
+// Configurer CORS pour autoriser les requêtes depuis le frontend
 app.use(cors({
-  origin: 'http://www.quran-pro.harrmos.com',
+  origin: 'http://localhost:5173',
   credentials: true
 }));
 
 // Ajouter le middleware pour parser le JSON
 app.use(express.json());
 
-// Configurer le middleware de session avec un store persistant (SQLite)
+// Configurer le middleware de session
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.db', dir: './db' }),
   secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: true,           // OBLIGATOIRE sur Render (HTTPS)
-    sameSite: 'None',       // OBLIGATOIRE pour cross-domain
-    maxAge: 24 * 60 * 60 * 1000
+    secure: false,
+    sameSite: 'Lax',
+    maxAge: 24 * 60 * 60 * 1000 // 24 heures
   }
 }));
 
+// Ajout de logs pour la configuration de session
 console.log('Configuration de session:', {
-  origin: 'http://www.quran-pro.harrmos.com',
-  secure: true,
+  secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
+  secure: process.env.NODE_ENV === 'production',
   sameSite: 'None',
-  store: 'SQLite',
   maxAge: 24 * 60 * 60 * 1000
 });
 
@@ -133,7 +115,8 @@ app.get('/auth/status', async (req, res) => {
       id: req.user.id, 
       name: req.user.name, 
       email: req.user.email, 
-      activatedBots: activatedBots.map(bot => bot.id) 
+      activatedBots: activatedBots.map(bot => bot.id),
+      mysql_id: req.user.mysql_id
     };
     console.log('/auth/status - Envoi de la réponse user (authentifié): ', responseUser);
     res.status(200).json({ user: responseUser });
@@ -150,22 +133,11 @@ app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'em
 
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login' }),
+  passport.authenticate('google', { failureRedirect: '/login' }), // Redirige vers une page de login en cas d'échec
   (req, res) => {
-    // Authentification réussie, renvoyer un HTML qui redirige côté client (et permet au navigateur de stocker le cookie)
-    res.send(`
-      <html>
-        <head>
-          <meta http-equiv="refresh" content="0;url=http://www.quran-pro.harrmos.com/" />
-          <script>
-            window.location.href = 'http://www.quran-pro.harrmos.com/';
-          </script>
-        </head>
-        <body>
-          Redirection...
-        </body>
-      </html>
-    `);
+    // Authentification réussie, rediriger vers la page d'accueil ou un tableau de bord de l'application frontend
+    // Tu devras peut-être rediriger vers une URL de ton application frontend
+    res.redirect(process.env.FRONTEND_URL || 'http://localhost:5173/'); // Utiliser l'URL du frontend
   }
 );
 
@@ -568,23 +540,72 @@ app.get('/api/messages/:botId/:conversationId/search', isAuthenticated, async (r
   }
 });
 
-// Route de callback Google qui redirige vers le frontend avec le token JWT dans l'URL
-app.get('/auth/google/jwt',
-  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
-  (req, res) => {
-    const token = jwt.sign({
-      id: req.user.id,
-      name: req.user.name,
-      email: req.user.email
-    }, process.env.JWT_SECRET || 'jwtsecret', { expiresIn: '24h' });
-    // Redirige vers le frontend avec le token dans l'URL
-    res.redirect(`http://www.quran-pro.harrmos.com/auth?token=${token}`);
+// Route pour récupérer l'ID MySQL d'un utilisateur connecté
+app.get('/api/user/mysql-id', isAuthenticated, (req, res) => {
+  try {
+    const mysqlUserId = getMySQLUserId(req.user.id);
+    if (mysqlUserId) {
+      res.json({ success: true, mysqlUserId });
+    } else {
+      res.status(404).json({ success: false, message: 'ID MySQL non trouvé pour cet utilisateur' });
+    }
+  } catch (error) {
+    console.error('Erreur récupération ID MySQL:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
-);
+});
 
-// Exemple de route protégée par JWT
-app.get('/api/protected', authenticateJWT, (req, res) => {
-  res.json({ message: 'Accès autorisé', user: req.user });
+// Route de test pour forcer la synchronisation d'un utilisateur vers MySQL
+app.get('/api/test/sync-user', isAuthenticated, async (req, res) => {
+  try {
+    console.log('🔄 Test de synchronisation forcée pour:', req.user.name);
+    
+    // Forcer la synchronisation
+    const mysqlUserId = await syncUserToMySQL(req.user.id, req.user.name, req.user.email);
+    
+    if (mysqlUserId) {
+      // Mettre à jour l'utilisateur SQLite avec l'ID MySQL
+      updateUserMySQLId(req.user.id, mysqlUserId);
+      console.log('✅ Synchronisation forcée réussie:', mysqlUserId);
+      
+      res.json({ 
+        success: true, 
+        message: 'Synchronisation réussie',
+        mysqlUserId,
+        user: req.user
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Échec de la synchronisation'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Erreur synchronisation forcée:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erreur serveur',
+      error: error.message
+    });
+  }
+});
+
+// Route pour créer une nouvelle conversation
+app.post('/api/conversations', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { botId, title } = req.body;
+    if (!botId) {
+      return res.status(400).json({ message: 'botId requis' });
+    }
+    const convTitle = title || 'Nouvelle conversation';
+    const conversationId = await addConversation(userId, botId, convTitle);
+    const conversation = getConversationById(conversationId);
+    res.status(201).json(conversation);
+  } catch (error) {
+    console.error('Erreur lors de la création de la conversation:', error);
+    res.status(500).json({ message: 'Erreur lors de la création de la conversation.' });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
