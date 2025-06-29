@@ -137,8 +137,9 @@ app.get('/auth/status', async (req, res) => {
 });
 
 // Route pour initier l'authentification Google
-app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
