@@ -8,6 +8,11 @@ const __dirname = path.dirname(__filename);
 const dbPath = path.resolve(__dirname, 'users.db');
 const db = new Database(dbPath, { verbose: console.log }); // `verbose` pour débugging
 
+// Définir l'URL de l'API SQL dynamiquement
+const SQL_API_URL = process.env.SQL_API_URL || (process.env.NODE_ENV === 'production'
+  ? 'https://appislamic-sql.onrender.com/api/users' // Remplace par l'URL de ton backend SQL OVH si besoin
+  : 'http://localhost:3001/api/users');
+
 // Fonction pour initialiser la base de données (créer les tables si elles n'existent pas)
 const initDatabase = () => {
   // Créer les tables
@@ -151,7 +156,8 @@ const initDatabase = () => {
 // Fonction pour synchroniser un utilisateur vers la base MySQL (avec fetch)
 const syncUserToMySQL = async (googleId, name, email) => {
   try {
-    const response = await fetch('http://localhost:3001/api/users', {
+    console.log('[SYNC] Tentative de synchro MySQL pour', email, 'via', SQL_API_URL);
+    const response = await fetch(SQL_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -167,13 +173,12 @@ const syncUserToMySQL = async (googleId, name, email) => {
         }
       })
     });
-
-    if (response.ok) {
-      const result = await response.json();
-      console.log('✅ Utilisateur synchronisé vers MySQL:', result.user.id);
+    const result = await response.json();
+    console.log('[SYNC] Réponse MySQL:', result);
+    if (response.ok && result.user && result.user.id) {
       // Initialiser les stats à 0 pour ce nouvel utilisateur
       try {
-        await fetch('http://localhost:3001/api/stats', {
+        await fetch(SQL_API_URL.replace('/users', '/stats'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -188,19 +193,20 @@ const syncUserToMySQL = async (googleId, name, email) => {
       } catch (err) {
         console.error('❌ Erreur lors de l\'initialisation des stats:', err);
       }
-      return result.user.id; // Retourner l'ID MySQL
+      return result.user.id;
     } else {
-      console.error('❌ Erreur synchronisation MySQL:', response.statusText);
+      console.error('[SYNC] Erreur MySQL:', result);
       return null;
     }
   } catch (error) {
-    console.error('❌ Erreur réseau synchronisation MySQL:', error);
+    console.error('[SYNC] Erreur réseau:', error);
     return null;
   }
 };
 
 // Fonction pour trouver ou créer un utilisateur (async pour Passport)
 const findOrCreateUser = async (googleId, name, email) => {
+  console.log('[FIND_OR_CREATE] Appel avec', googleId, name, email);
   const user = db.prepare('SELECT * FROM users WHERE googleId = ?').get(googleId);
 
   if (user) {
