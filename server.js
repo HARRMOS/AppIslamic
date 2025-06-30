@@ -11,6 +11,8 @@ dotenv.config();
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 // Middleware pour vérifier l'authentification
 function isAuthenticated(req, res, next) {
   if (req.isAuthenticated()) {
