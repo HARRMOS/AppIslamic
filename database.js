@@ -199,60 +199,45 @@ const syncUserToMySQL = async (googleId, name, email) => {
   }
 };
 
-// Fonction pour trouver ou créer un utilisateur (synchrone pour Passport)
-const findOrCreateUser = (googleId, name, email) => {
+// Fonction pour trouver ou créer un utilisateur (async pour Passport)
+const findOrCreateUser = async (googleId, name, email) => {
   const user = db.prepare('SELECT * FROM users WHERE googleId = ?').get(googleId);
 
   if (user) {
     console.log('User found:', user);
-    
     // Vérifier si l'utilisateur a déjà un ID MySQL, sinon le synchroniser
     if (!user.mysql_id) {
       console.log('🔄 Utilisateur existant sans ID MySQL, synchronisation...');
-      // Utiliser une IIFE async pour ne pas bloquer
-      (async () => {
-        try {
-          const mysqlUserId = await syncUserToMySQL(googleId, name, email);
-          if (mysqlUserId) {
-            // Mettre à jour l'utilisateur SQLite avec l'ID MySQL
-            db.prepare('UPDATE users SET mysql_id = ? WHERE id = ?').run(mysqlUserId, googleId);
-            console.log('✅ ID MySQL ajouté à l\'utilisateur existant:', mysqlUserId);
-          }
-        } catch (error) {
-          console.error('❌ Erreur synchronisation MySQL pour utilisateur existant:', error);
+      try {
+        const mysqlUserId = await syncUserToMySQL(googleId, name, email);
+        if (mysqlUserId) {
+          db.prepare('UPDATE users SET mysql_id = ? WHERE id = ?').run(mysqlUserId, googleId);
+          console.log('✅ ID MySQL ajouté à l\'utilisateur existant:', mysqlUserId);
         }
-      })();
+      } catch (error) {
+        console.error('❌ Erreur synchronisation MySQL pour utilisateur existant:', error);
+      }
     }
-    
-    return user;
+    return db.prepare('SELECT * FROM users WHERE googleId = ?').get(googleId);
   } else {
     console.log('User not found, creating new user...');
-    
-    // Créer l'utilisateur dans SQLite
-    const newUser = db.prepare('INSERT INTO users (id, googleId, name, email) VALUES (?, ?, ?, ?)').run(
+    db.prepare('INSERT INTO users (id, googleId, name, email) VALUES (?, ?, ?, ?)').run(
       googleId,
       googleId,
       name,
       email
     );
-    const createdUser = db.prepare('SELECT * FROM users WHERE id = ?').get(googleId);
-    console.log('User created in SQLite:', createdUser);
-    
-    // Synchroniser vers MySQL en arrière-plan (ne pas bloquer)
-    (async () => {
-      try {
-        const mysqlUserId = await syncUserToMySQL(googleId, name, email);
-        if (mysqlUserId) {
-          // Mettre à jour l'utilisateur SQLite avec l'ID MySQL
-          db.prepare('UPDATE users SET mysql_id = ? WHERE id = ?').run(mysqlUserId, googleId);
-          console.log('✅ ID MySQL ajouté à l\'utilisateur SQLite:', mysqlUserId);
-        }
-      } catch (error) {
-        console.error('❌ Erreur synchronisation MySQL:', error);
-      }
-    })();
-    
-    return createdUser;
+    // Synchroniser vers MySQL (BLOQUANT)
+    const mysqlUserId = await syncUserToMySQL(googleId, name, email);
+    if (mysqlUserId) {
+      db.prepare('UPDATE users SET mysql_id = ? WHERE id = ?').run(mysqlUserId, googleId);
+      console.log('✅ ID MySQL ajouté à l\'utilisateur SQLite:', mysqlUserId);
+      return db.prepare('SELECT * FROM users WHERE id = ?').get(googleId);
+    } else {
+      db.prepare('DELETE FROM users WHERE id = ?').run(googleId);
+      console.error('❌ Impossible de synchroniser l\'utilisateur avec MySQL, annulation de la création.');
+      return null;
+    }
   }
 };
 

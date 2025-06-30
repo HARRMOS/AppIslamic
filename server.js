@@ -63,12 +63,16 @@ passport.use(new GoogleStrategy({
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/auth/google/callback"
   },
-  (accessToken, refreshToken, profile, done) => {
-    // Utiliser la fonction findOrCreateUser pour gérer l'utilisateur dans la base de données
+  async (accessToken, refreshToken, profile, done) => {
     try {
-      const user = findOrCreateUser(profile.id, profile.displayName, profile.emails[0].value);
+      const user = await findOrCreateUser(profile.id, profile.displayName, profile.emails[0].value);
+      if (!user) {
+        // Si la synchro MySQL a échoué, refuser la connexion
+        return done(null, false);
+      }
       done(null, user);
     } catch (err) {
+      console.error('Erreur dans la stratégie Google:', err);
       done(err);
     }
   }
