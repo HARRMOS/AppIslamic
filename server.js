@@ -6,6 +6,8 @@ import session from 'express-session';
 import { initDatabase, findOrCreateUser, findUserById, getBots, addMessage, getMessagesForUserBot, addBot, updateBot, deleteBot, getBotById, checkMessageLimit, getActivatedBotsForUser, activateBotForUser, addActivationKey, getConversationsForUserBot, deleteConversation, updateConversationTitle, getConversationById, addConversation, saveUserBotPreferences, getUserBotPreferences, getMySQLUserId, syncUserToMySQL, updateUserMySQLId } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
@@ -630,6 +632,17 @@ app.post('/api/conversations', isAuthenticated, async (req, res) => {
     console.error('Erreur lors de la création de la conversation:', error);
     res.status(500).json({ message: 'Erreur lors de la création de la conversation.' });
   }
+});
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Servir les fichiers statiques du build React
+app.use(express.static(path.join(__dirname, '../dist')));
+
+// Fallback SPA : toutes les autres routes renvoient index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist', 'index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
