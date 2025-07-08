@@ -15,7 +15,8 @@ import {
   deleteConversationMySQL,
   getConversationsForUserBot, // Ajouté
   getBotById,
-  getMessagesForUserBot // Ajouté
+  getMessagesForUserBot, // Ajouté
+  getUserBotPreferences // Ajouté
 } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';

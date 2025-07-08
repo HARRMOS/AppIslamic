@@ -174,6 +174,14 @@ export async function getMessagesForUserBot(userId, botId, conversationId = 0, l
   return rows.reverse(); // Pour avoir du plus ancien au plus récent
 }
 
+export async function getUserBotPreferences(userId, botId) {
+  const [rows] = await mysqlPool.query(
+    'SELECT * FROM user_bot_preferences WHERE userId = ? AND botId = ?',
+    [userId, botId]
+  );
+  return rows[0] || null;
+}
+
 export { 
   mysqlPool,
   syncUserToMySQL
