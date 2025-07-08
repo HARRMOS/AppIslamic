@@ -12,7 +12,9 @@ import {
   getUserStats,
   mysqlPool, // <-- Ajouté ici
   updateConversationTitleMySQL,
-  deleteConversationMySQL
+  deleteConversationMySQL,
+  getConversationsForUserBot, // Ajouté
+  getBotById // Ajouté
 } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';

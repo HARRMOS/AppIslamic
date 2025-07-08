@@ -124,16 +124,16 @@ export async function getUserStats(userId) {
 }
 
 export async function updateConversationTitleMySQL(userId, botId, conversationId, title) {
-  try {
+    try {
     const [result] = await mysqlPool.execute(
       'UPDATE conversations SET title = ?, updatedAt = NOW() WHERE id = ? AND userId = ? AND botId = ?',
       [title, conversationId, userId, botId]
     );
     return result.affectedRows > 0;
-  } catch (err) {
+    } catch (err) {
     console.error('Erreur SQL MySQL lors du renommage:', err);
     throw err;
-  }
+    }
 }
 
 export async function deleteConversationMySQL(userId, botId, conversationId) {
@@ -144,9 +144,20 @@ export async function deleteConversationMySQL(userId, botId, conversationId) {
   return result.affectedRows > 0;
 }
 
+export async function getConversationsForUserBot(userId, botId) {
+  const [rows] = await mysqlPool.query(
+    'SELECT * FROM conversations WHERE user_id = ? AND bot_id = ?',
+    [userId, botId]
+  );
+  return rows;
+}
+
 export async function getBotById(botId) {
-  const [rows] = await mysqlPool.query('SELECT * FROM bots WHERE id = ?', [botId]);
-  return rows[0] || null;
+  const [rows] = await mysqlPool.query(
+    'SELECT * FROM bots WHERE id = ?',
+    [botId]
+  );
+  return rows[0];
 }
 
 export async function getMessagesForUserBot(userId, botId, conversationId = 0, limit = 10) {
@@ -163,7 +174,7 @@ export async function getMessagesForUserBot(userId, botId, conversationId = 0, l
   return rows.reverse(); // Pour avoir du plus ancien au plus récent
 }
 
-export {
+export { 
   mysqlPool,
   syncUserToMySQL
 }; 
