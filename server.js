@@ -3,7 +3,19 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import dotenv from 'dotenv';
 import session from 'express-session';
-import { initDatabase, findOrCreateUser, findUserById, getBots, addMessage, getMessagesForUserBot, addBot, updateBot, deleteBot, getBotById, checkMessageLimit, getActivatedBotsForUser, activateBotForUser, addActivationKey, getConversationsForUserBot, deleteConversation, updateConversationTitle, getConversationById, addConversation, saveUserBotPreferences, getUserBotPreferences, getMySQLUserId, syncUserToMySQL, updateUserMySQLId } from './database.js';
+import { 
+  syncUserToMySQL,
+  findOrCreateUser,
+  findUserById,
+  checkGlobalChatbotQuota,
+  incrementChatbotMessagesUsed,
+  getUserStats,
+  mysqlPool, // <-- Ajouté ici
+  updateConversationTitleMySQL,
+  deleteConversationMySQL,
+  getBotById,
+  getMessagesForUserBot
+} from './database.js';
 import cors from 'cors';
 import openai from './openai.js';
 import path from 'path';
@@ -45,8 +57,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: true,
-    sameSite: 'None',
+    secure: false,
+    sameSite: 'Lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 heures
   }
 }));
@@ -90,27 +102,31 @@ passport.serializeUser((user, done) => {
   done(null, user.id);
 });
 
-passport.deserializeUser((id, done) => {
-  console.log('Passport: server.js - deserializeUser - Received ID:', id);
+passport.deserializeUser(async (id, done) => {
   try {
-    // Assurez-vous que findUserById est importé depuis database.js
-    const user = findUserById(id);
-    console.log('Passport: server.js - deserializeUser - Result from findUserById:', user);
+    const user = await findUserById(id);
     if (user) {
       console.log('Passport: server.js - deserializeUser - User found, calling done(null, user)');
       done(null, user);
     } else {
       console.log('Passport: server.js - deserializeUser - User not found for ID', id, ', calling done(null, false)');
-      done(null, false); // User not found
+      done(null, false);
     }
   } catch (err) {
     console.error('Passport: server.js - deserializeUser - Error during deserialization:', err);
-    done(err); // Pass the error to Passport
+    done(err);
   }
 });
 
 // Initialiser la base de données au démarrage du serveur
-initDatabase();
+
+// Fonction utilitaire pour ajouter un message dans MySQL
+async function addMessageMySQL(userId, botId, conversationId, sender, text, context = null) {
+  await mysqlPool.query(
+    'INSERT INTO messages (userId, botId, conversationId, sender, text, context) VALUES (?, ?, ?, ?, ?, ?)',
+    [userId, botId, conversationId, sender, text, context]
+  );
+}
 
 // Route pour vérifier l'état de l'authentification (pour le frontend)
 app.get('/auth/status', async (req, res) => {
@@ -124,13 +140,10 @@ app.get('/auth/status', async (req, res) => {
 
   if (req.isAuthenticated()) {
     console.log('Utilisateur authentifié, ID:', req.user.id);
-    const activatedBots = getActivatedBotsForUser(req.user.id);
-    console.log('/auth/status - Bots activés pour l\'utilisateur:', activatedBots);
     const responseUser = { 
       id: req.user.id, 
       name: req.user.name, 
       email: req.user.email, 
-      activatedBots: activatedBots.map(bot => bot.id),
       mysql_id: req.user.mysql_id
     };
     console.log('/auth/status - Envoi de la réponse user (authentifié): ', responseUser);
@@ -152,7 +165,7 @@ app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
     // Répondre en 200 avec un HTML qui redirige côté client (pour que le cookie soit bien set)
-    const frontendUrl = 'https://www.quran-pro.harrmos.com';
+    const frontendUrl = 'http://localhost:5173/';
     res.send(`
       <html>
         <head>
@@ -180,9 +193,275 @@ app.get('/logout', (req, res, next) => {
   });
 });
 
-// Nouvelle route pour obtenir la liste de tous les utilisateurs
-// Supprimée pour des raisons de sécurité
-// app.get('/api/users', ...)
+// ===================== ROUTES UTILISATEURS =====================
+app.post('/api/users', async (req, res) => {
+  try {
+    const { email, username, preferences } = req.body;
+    const [existingUsers] = await mysqlPool.execute(
+      'SELECT id FROM users WHERE email = ?',
+      [email]
+    );
+    if (existingUsers.length > 0) {
+      const existingUser = existingUsers[0];
+      return res.status(200).json({
+        success: true,
+        user: {
+          id: existingUser.id,
+          email,
+          username,
+          preferences: JSON.parse(existingUsers[0].preferences || '{}'),
+          existing: true
+        }
+      });
+    }
+    const userId = require('crypto').randomUUID();
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO users (id, email, username, preferences) VALUES (?, ?, ?, ?)',
+      [userId, email, username, JSON.stringify(preferences || {})]
+    );
+    res.status(201).json({
+      success: true,
+      user: { id: userId, email, username, preferences, existing: false }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la création de l\'utilisateur', details: error.message });
+  }
+});
+app.get('/api/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute(
+      'SELECT id, email, username, preferences, created_at, last_login FROM users WHERE id = ?',
+      [userId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+    res.json({ success: true, user: rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+app.put('/api/users/:userId/preferences', isAuthenticated, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { preferences } = req.body;
+    const [result] = await mysqlPool.execute(
+      'UPDATE users SET preferences = ? WHERE id = ?',
+      [JSON.stringify(preferences), userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Utilisateur non trouvé' });
+    }
+    res.json({ success: true, message: 'Préférences mises à jour' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+// ===================== ROUTES STATISTIQUES =====================
+app.post('/api/stats', isAuthenticated, async (req, res) => {
+  console.log('POST /api/stats', req.body);
+  try {
+    const { userId, hasanat = 0, verses = 0, time = 0, pages = 0 } = req.body;
+    if (hasanat === 0 && verses === 0 && time === 0 && pages === 0) {
+      return res.json({ success: true, message: 'Aucune stat à incrémenter' });
+    }
+    
+    // Utiliser la date locale au lieu de CURDATE() (UTC)
+    const today = new Date();
+    today.setHours(0,0,0,0); // Forcer à minuit
+    const dateStr = today.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    
+    await mysqlPool.execute(
+      'INSERT IGNORE INTO quran_stats (user_id, date) VALUES (?, ?)',
+      [userId, dateStr]
+    );
+    await mysqlPool.execute(
+      'CALL IncrementDailyStats(?, ?, ?, ?)',
+      [userId, hasanat, verses, time]
+    );
+    if (pages > 0) {
+      await mysqlPool.execute(
+        'UPDATE quran_stats SET pages_read = pages_read + ? WHERE user_id = ? AND date = ?',
+        [pages, userId, dateStr]
+      );
+    }
+    res.json({ success: true, message: 'Stats mises à jour' });
+  } catch (error) {
+    console.error('Erreur SQL stats:', error); // Log détaillé
+    res.status(500).json({ error: 'Erreur lors de la mise à jour des stats', details: error.message });
+  }
+});
+// ===================== ROUTES PROGRESSION =====================
+app.post('/api/progress', isAuthenticated, async (req, res) => {
+  try {
+    const { userId, surah, ayah } = req.body;
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO reading_progress (user_id, surah, ayah) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE surah = VALUES(surah), ayah = VALUES(ayah)',
+      [userId, surah, ayah]
+    );
+    res.json({ success: true, message: 'Progression sauvegardée' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la sauvegarde' });
+  }
+});
+app.get('/api/progress/:userId', isAuthenticated, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute(
+      'SELECT surah, ayah, updated_at FROM reading_progress WHERE user_id = ?',
+      [userId]
+    );
+    res.json({ success: true, progress: rows[0] || { surah: 1, ayah: 1, updated_at: null } });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+// ===================== ROUTES HISTORIQUE =====================
+app.post('/api/history', isAuthenticated, async (req, res) => {
+  try {
+    const { userId, surah, ayah, actionType, duration = 0 } = req.body;
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO reading_history (user_id, surah, ayah, action_type, duration_seconds) VALUES (?, ?, ?, ?, ?)',
+      [userId, surah, ayah, actionType, duration]
+    );
+    res.json({ success: true, message: 'Historique ajouté' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+app.get('/api/history/:userId/:limit', isAuthenticated, async (req, res) => {
+  try {
+    const { userId, limit } = req.params;
+    const limitNum = Math.min(parseInt(limit) || 50, 100);
+    const [rows] = await mysqlPool.execute(
+      `SELECT surah, ayah, action_type, duration_seconds, created_at 
+       FROM reading_history 
+       WHERE user_id = ? 
+       ORDER BY created_at DESC 
+       LIMIT ?`,
+      [userId, limitNum]
+    );
+    res.json({ success: true, history: rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+// ===================== ROUTES FAVORIS =====================
+app.post('/api/favorites', isAuthenticated, async (req, res) => {
+  try {
+    const { userId, type, referenceId, referenceText, notes } = req.body;
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO favorites (user_id, type, reference_id, reference_text, notes) VALUES (?, ?, ?, ?, ?)',
+      [userId, type, referenceId, referenceText, notes]
+    );
+    res.json({ success: true, message: 'Favori ajouté' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+app.get('/api/favorites/:userId', isAuthenticated, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute(
+      'SELECT * FROM favorites WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ success: true, favorites: rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+app.delete('/api/favorites/:favoriteId', isAuthenticated, async (req, res) => {
+  try {
+    const { favoriteId } = req.params;
+    const [result] = await mysqlPool.execute(
+      'DELETE FROM favorites WHERE id = ?',
+      [favoriteId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Favori non trouvé' });
+    }
+    res.json({ success: true, message: 'Favori supprimé' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+// ===================== ROUTES SESSIONS =====================
+app.post('/api/sessions/start', isAuthenticated, async (req, res) => {
+  try {
+    const { userId, deviceInfo } = req.body;
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO reading_sessions (user_id, device_info) VALUES (?, ?)',
+      [userId, JSON.stringify(deviceInfo || {})]
+    );
+    res.json({ success: true, sessionId: result.insertId, message: 'Session démarrée' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+app.put('/api/sessions/:sessionId/end', isAuthenticated, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { versesRead, hasanatEarned } = req.body;
+    const [result] = await mysqlPool.execute(
+      `UPDATE reading_sessions 
+       SET end_time = NOW(), 
+           duration_seconds = TIMESTAMPDIFF(SECOND, start_time, NOW()),
+           verses_read = ?, 
+           hasanat_earned = ? 
+       WHERE id = ?`,
+      [versesRead || 0, hasanatEarned || 0, sessionId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Session non trouvée' });
+    }
+    res.json({ success: true, message: 'Session terminée' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+// ===================== ROUTES OBJECTIFS =====================
+app.post('/api/goals', isAuthenticated, async (req, res) => {
+  try {
+    const { userId, goalType, targetValue, startDate, endDate } = req.body;
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO reading_goals (user_id, goal_type, target_value, start_date, end_date) VALUES (?, ?, ?, ?, ?)',
+      [userId, goalType, targetValue, startDate, endDate]
+    );
+    res.json({ success: true, goalId: result.insertId, message: 'Objectif créé' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+app.get('/api/goals/:userId', isAuthenticated, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const [rows] = await mysqlPool.execute(
+      'SELECT * FROM reading_goals WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
+    res.json({ success: true, goals: rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+app.put('/api/goals/:goalId', isAuthenticated, async (req, res) => {
+  try {
+    const { goalId } = req.params;
+    const { currentValue, isCompleted } = req.body;
+    const [result] = await mysqlPool.execute(
+      'UPDATE reading_goals SET current_value = ?, is_completed = ? WHERE id = ?',
+      [currentValue, isCompleted, goalId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Objectif non trouvé' });
+    }
+    res.json({ success: true, message: 'Objectif mis à jour' });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
 
 // Nouvelle route pour récupérer tous les bots
 app.get('/api/bots', (req, res) => {
@@ -195,6 +474,52 @@ app.get('/api/bots', (req, res) => {
   }
 });
 
+// Incrémenter les stats quotidiennes
+// app.post('/api/stats', async (req, res) => {
+//   try {
+//     const { userId, hasanat = 0, verses = 0, time = 0, pages = 0 } = req.body;
+//     // Si aucune stat à incrémenter, ignorer la requête
+//     if (hasanat === 0 && verses === 0 && time === 0 && pages === 0) {
+//       return res.json({ success: true, message: 'Aucune stat à incrémenter' });
+//     }
+//     // S'assurer qu'une ligne existe pour l'utilisateur et la date du jour
+//     await pool.execute(
+//       'INSERT IGNORE INTO quran_stats (user_id, date) VALUES (?, CURDATE())',
+//       [userId]
+//     );
+//     // Utiliser la procédure stockée
+//     await pool.execute(
+//       'CALL IncrementDailyStats(?, ?, ?, ?)',
+//       [userId, hasanat, verses, time]
+//     );
+//     // Mettre à jour les pages si fournies
+//     if (pages > 0) {
+//       await pool.execute(
+//         'UPDATE quran_stats SET pages_read = pages_read + ? WHERE user_id = ? AND date = CURDATE()',
+//         [pages, userId]
+//       );
+//     }
+//     res.json({ success: true, message: 'Stats mises à jour' });
+//   } catch (error) {
+//     console.error('Erreur mise à jour stats:', error);
+//     res.status(500).json({ error: 'Erreur lors de la mise à jour des stats' });
+//   }
+// });
+
+//Route pour les stats du jour
+ app.get('/api/stats/:userId/today', async (req, res) => {
+   try {
+     const { userId } = req.params;
+     const [rows] = await mysqlPool.execute(
+       'SELECT * FROM quran_stats WHERE user_id = ? AND date = CURDATE()',
+       [userId]
+     );
+     res.json({ success: true, stats: rows });
+   } catch (error) {
+     console.error('Erreur récupération stats today:', error);
+     res.status(500).json({ error: 'Erreur serveur' });
+   }
+});
 // Route pour créer un nouveau bot
 app.post('/api/bots', (req, res) => {
   if (!req.isAuthenticated()) {
@@ -247,36 +572,7 @@ app.delete('/api/bots/:id', (req, res) => {
 });
 
 // Nouvelle route pour activer un bot pour un utilisateur
-app.post('/api/activate-bot', async (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: 'Non authentifié.' });
-  }
 
-  const { botId, key } = req.body;
-  const userId = req.user.id; // L'ID de l'utilisateur connecté
-
-  if (!botId || !key) {
-    return res.status(400).json({ message: 'Bot ID et clé d\'activation sont requis.' });
-  }
-
-  try {
-    const result = activateBotForUser(userId, botId, key);
-
-    if (result.success) {
-      if (result.message === 'Bot déjà activé.') {
-        res.status(200).json({ message: result.message });
-      } else {
-        res.status(201).json({ message: result.message });
-      }
-    } else {
-      res.status(400).json({ message: result.message });
-    }
-
-  } catch (error) {
-    console.error('Erreur lors de l\'activation du bot:', error);
-    res.status(500).json({ message: 'Une erreur est survenue lors de l\'activation du bot.' });
-  }
-});
 
 // Nouvelle route pour récupérer les messages pour un utilisateur et un bot spécifiques
 app.get('/api/messages', async (req, res) => {
@@ -330,28 +626,40 @@ app.post('/api/chat', async (req, res) => {
     return res.status(401).json({ message: 'Non authentifié' });
   }
 
+  // Vérification du quota global de messages chatbot
+  const quota = await checkGlobalChatbotQuota(req.user.id, req.user.email);
+  if (!quota.canSend) {
+    return res.status(402).json({ message: `Quota de messages gratuits dépassé. Veuillez acheter plus de messages pour continuer à utiliser le chatbot.` });
+  }
+
   console.log('/api/chat - Utilisateur authentifié, ID:', req.user.id);
   const { message, botId, conversationId, title } = req.body;
+  const usedBotId = botId ? Number(botId) : 1;
 
-  if (!message || botId === undefined) {
+  if (!message || usedBotId === undefined) {
     return res.status(400).json({ message: 'Message et botId sont requis' });
   }
 
   let currentConversationId = Number(conversationId);
   let conversationTitle = title;
 
-  if (currentConversationId <= 0 || !(await getConversationById(currentConversationId))) {
+  if (currentConversationId <= 0) {
     try {
       const newConvTitle = conversationTitle || 'Nouvelle conversation';
-      currentConversationId = await addConversation(req.user.id, botId, newConvTitle);
-      console.log('Nouvelle conversation créée avec ID:', currentConversationId);
+      // Création de la conversation dans MySQL
+      const [result] = await mysqlPool.execute(
+        'INSERT INTO conversations (userId, botId, title) VALUES (?, ?, ?)',
+        [req.user.id, usedBotId, newConvTitle]
+      );
+      currentConversationId = result.insertId;
+      console.log('Nouvelle conversation créée avec ID (MySQL):', currentConversationId);
     } catch (convError) {
-      console.error('Erreur lors de la création de la conversation:', convError);
+      console.error('Erreur lors de la création de la conversation (MySQL):', convError);
       return res.status(500).json({ message: 'Erreur lors de la création de la conversation.' });
     }
   } else if (title && currentConversationId > 0) {
     try {
-      await updateConversationTitle(req.user.id, Number(botId), Number(conversationId), title);
+      await updateConversationTitle(req.user.id, usedBotId, Number(conversationId), title);
       console.log(`Titre de la conversation ${currentConversationId} mis à jour.`);
     } catch (titleUpdateError) {
       console.error(`Erreur lors de la mise à jour du titre de la conversation ${currentConversationId}:`, titleUpdateError);
@@ -360,7 +668,7 @@ app.post('/api/chat', async (req, res) => {
 
   try {
     // Récupérer le bot pour obtenir le prompt
-    const bot = getBotById(botId);
+    const bot = getBotById(usedBotId);
 
     if (!bot) {
       return res.status(404).json({ message: 'Bot non trouvé' });
@@ -369,7 +677,7 @@ app.post('/api/chat', async (req, res) => {
     const prompt = bot.prompt || 'You are a helpful assistant.';
 
     // Récupérer les 10 derniers messages pour le contexte de cette conversation
-    const conversationHistory = await getMessagesForUserBot(req.user.id, botId, currentConversationId, 10);
+    const conversationHistory = await getMessagesForUserBot(req.user.id, usedBotId, currentConversationId, 10);
 
     const messagesForGpt = [
       { role: "system", content: prompt }
@@ -395,8 +703,11 @@ app.post('/api/chat', async (req, res) => {
 
     const reply = completion.choices[0].message.content;
 
-    await addMessage(req.user.id, botId, currentConversationId, 'user', message);
-    await addMessage(req.user.id, botId, currentConversationId, 'bot', reply);
+    await addMessageMySQL(req.user.id, usedBotId, currentConversationId, 'user', message);
+    await addMessageMySQL(req.user.id, usedBotId, currentConversationId, 'bot', reply);
+
+    // Incrémenter le compteur de messages chatbot
+    incrementChatbotMessagesUsed(req.user.id);
 
     res.status(200).json({ message: reply });
 
@@ -409,6 +720,23 @@ app.post('/api/chat', async (req, res) => {
        res.status(500).json({ message: 'Une erreur est survenue lors de l\'interaction avec le bot' });
     }
   }
+});
+
+// Route pour récupérer le quota de messages chatbot restant
+app.get('/api/chatbot/quota', async (req, res) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: 'Non authentifié' });
+  }
+  // Aller chercher l'utilisateur dans MySQL
+  const [rows] = await mysqlPool.query('SELECT chatbotMessagesUsed, chatbotMessagesQuota FROM users WHERE id = ?', [req.user.id]);
+  if (!rows[0]) return res.status(404).json({ message: 'Utilisateur non trouvé' });
+  const used = rows[0].chatbotMessagesUsed ?? 0;
+  const quota = rows[0].chatbotMessagesQuota ?? 1000;
+  res.json({
+    remaining: Math.max(0, quota - used),
+    total: quota,
+    used
+  });
 });
 
 // Middleware de gestion des erreurs global
@@ -498,19 +826,14 @@ app.delete('/api/conversations/:botId/:conversationId', isAuthenticated, async (
     const { botId, conversationId } = req.params;
     const userId = req.user.id;
 
-    console.log(`Attempting to delete conversation ${conversationId} for user ${userId} and bot ${botId}`);
+    const success = await deleteConversationMySQL(userId, botId, conversationId);
 
-    const success = await deleteConversation(userId, botId, conversationId);
-    
     if (success) {
-      console.log(`Conversation ${conversationId} deleted successfully.`);
       res.json({ success: true });
     } else {
-      console.warn(`Conversation ${conversationId} not found or not deleted.`);
       res.status(404).json({ error: 'Conversation non trouvée' });
     }
   } catch (error) {
-    console.error('Erreur lors de la suppression de la conversation:', error);
     res.status(500).json({ error: 'Erreur lors de la suppression de la conversation' });
   }
 });
@@ -529,8 +852,8 @@ app.put('/api/conversations/:botId/:conversationId/title', isAuthenticated, asyn
       return res.status(400).json({ error: 'Le titre est requis' });
     }
 
-    // Utiliser la nouvelle fonction de la base de données pour mettre à jour le titre
-    const success = await updateConversationTitle(userId, Number(botId), Number(conversationId), title);
+    // Utiliser la version MySQL
+    const success = await updateConversationTitleMySQL(userId, Number(botId), Number(conversationId), title);
 
     if (success) {
       console.log(`Title updated successfully for conversation ${conversationId}.`);
@@ -558,7 +881,7 @@ app.get('/api/messages/:botId/:conversationId/search', isAuthenticated, async (r
   }
 
   try {
-    const messages = await database.searchMessages(userId, botId, conversationId, query);
+    const messages = await searchMessages(userId, botId, conversationId, query);
     res.json(messages);
   } catch (error) {
     console.error('Erreur lors de la recherche de messages:', error);
@@ -566,20 +889,32 @@ app.get('/api/messages/:botId/:conversationId/search', isAuthenticated, async (r
   }
 });
 
-// Route pour récupérer l'ID MySQL d'un utilisateur connecté
-app.get('/api/user/mysql-id', isAuthenticated, (req, res) => {
+// Route pour récupérer l'ID MySQL d'un utilisateur connecté (désormais l'id utilisateur)
+app.get('/api/user/mysql-id', isAuthenticated, async (req, res) => {
   try {
-    const mysqlUserId = getMySQLUserId(req.user.id);
-    if (mysqlUserId) {
-      res.json({ success: true, mysqlUserId });
-    } else {
-      res.status(404).json({ success: false, message: 'ID MySQL non trouvé pour cet utilisateur' });
+    // Si req.user est un id (string), on le renvoie directement. Sinon, on va le chercher en base.
+    let userId = req.user && typeof req.user === 'object' ? req.user.id : req.user;
+    if (!userId) {
+      return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
     }
+    res.json({ success: true, mysqlUserId: userId });
   } catch (error) {
-    console.error('Erreur récupération ID MySQL:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
+
+// Route pour récupérer les stats utilisateur depuis MySQL
+app.get('/api/user/stats', isAuthenticated, async (req, res) => {
+  try {
+    const stats = await getUserStats(req.user.id);
+    res.json({ success: true, stats });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// Route pour récupérer les stats journalières des 30 derniers jours pour l’utilisateur connecté
+
 
 // Route de test pour forcer la synchronisation d'un utilisateur vers MySQL
 app.get('/api/test/sync-user', isAuthenticated, async (req, res) => {
@@ -621,16 +956,213 @@ app.post('/api/conversations', isAuthenticated, async (req, res) => {
   try {
     const userId = req.user.id;
     const { botId, title } = req.body;
-    if (!botId) {
-      return res.status(400).json({ message: 'botId requis' });
+    const usedBotId = botId ? Number(botId) : 1;
+    if (!usedBotId || isNaN(usedBotId)) {
+      return res.status(400).json({ message: 'botId requis et doit être un nombre' });
+    }
+    // Vérifier que le bot existe dans MySQL
+    const [bots] = await mysqlPool.execute('SELECT * FROM bots WHERE id = ?', [usedBotId]);
+    if (!bots || bots.length === 0) {
+      return res.status(404).json({ message: 'Bot inexistant' });
+    }
+    // Vérifier que l'utilisateur existe dans MySQL
+    const [users] = await mysqlPool.execute('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!users || users.length === 0) {
+      return res.status(404).json({ message: 'Utilisateur inexistant' });
     }
     const convTitle = title || 'Nouvelle conversation';
-    const conversationId = await addConversation(userId, botId, convTitle);
-    const conversation = getConversationById(conversationId);
-    res.status(201).json(conversation);
+    // Insérer la conversation dans MySQL
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO conversations (userId, botId, title) VALUES (?, ?, ?)',
+      [userId, usedBotId, convTitle]
+    );
+    // Récupérer la conversation créée
+    const [convs] = await mysqlPool.execute('SELECT * FROM conversations WHERE id = ?', [result.insertId]);
+    res.status(201).json(convs[0]);
   } catch (error) {
-    console.error('Erreur lors de la création de la conversation:', error);
+    console.error('Erreur lors de la création de la conversation (MySQL):', error);
     res.status(500).json({ message: 'Erreur lors de la création de la conversation.' });
+  }
+});
+
+// Route de test pour générer des stats sur 30 jours
+app.post('/api/test/generate-stats', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    await mysqlPool.execute('DELETE FROM quran_stats WHERE user_id = ?', [userId]);
+    // Générer les valeurs à insérer
+    const values = [];
+    for (let i = 0; i < 30; i++) {
+      // Date au format YYYY-MM-DD
+      const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      values.push([userId, date, 100 + i * 10, 2 + i, 0, 0]);
+    }
+    // Insertion en une seule requête
+    await mysqlPool.query(
+      'INSERT INTO quran_stats (user_id, date, hasanat, verses, time_seconds, pages_read) VALUES ?',
+      [values]
+    );
+    res.json({ success: true, message: 'Stats de test générées pour 30 jours.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur lors de la génération des stats.', error: error.message });
+  }
+});
+
+// Stats du jour
+app.get('/api/user/stats/today', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await mysqlPool.execute(
+      `SELECT 
+        COALESCE(SUM(hasanat), 0) as hasanat,
+        COALESCE(SUM(verses), 0) as verses,
+        COALESCE(SUM(time_seconds), 0) as time_seconds,
+        COALESCE(SUM(pages_read), 0) as pages_read
+      FROM quran_stats
+      WHERE user_id = ? AND DATE(date) = CURDATE()`, [userId]
+    );
+    res.json({ success: true, stats: rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// Stats de la semaine
+app.get('/api/user/stats/week', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await mysqlPool.execute(
+      `SELECT 
+        COALESCE(SUM(hasanat), 0) as hasanat,
+        COALESCE(SUM(verses), 0) as verses,
+        COALESCE(SUM(time_seconds), 0) as time_seconds,
+        COALESCE(SUM(pages_read), 0) as pages_read
+      FROM quran_stats
+      WHERE user_id = ? AND DATE(date) >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)`, [userId]
+    );
+    res.json({ success: true, stats: rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// Stats totales
+app.get('/api/user/stats/all', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await mysqlPool.execute(
+      `SELECT 
+        COALESCE(SUM(hasanat), 0) as hasanat,
+        COALESCE(SUM(verses), 0) as verses,
+        COALESCE(SUM(time_seconds), 0) as time_seconds,
+        COALESCE(SUM(pages_read), 0) as pages_read
+      FROM quran_stats
+      WHERE user_id = ?`, [userId]
+    );
+    res.json({ success: true, stats: rows[0] });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// Route pour récupérer les stats journalières des 30 derniers jours pour l'utilisateur connecté
+app.get('/api/user/stats/daily', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await mysqlPool.execute(
+      `SELECT 
+        DATE(date) as date,
+        SUM(hasanat) as hasanat,
+        SUM(verses) as verses,
+        SUM(time_seconds) as time_seconds,
+        SUM(pages_read) as pages_read
+      FROM quran_stats
+      WHERE user_id = ? AND DATE(date) >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+      GROUP BY DATE(date)
+      ORDER BY DATE(date) DESC
+      LIMIT 30`,
+      [userId]
+    );
+    res.json({ success: true, stats: rows });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur serveur', error: error.message });
+  }
+});
+
+// ===================== ROUTES PREFERENCES UTILISATEUR =====================
+// Récupérer les préférences de l'utilisateur connecté
+app.get('/api/user/preferences', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const [rows] = await mysqlPool.execute(
+      'SELECT preferences FROM users WHERE id = ?',
+      [userId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
+    }
+    res.json({ success: true, preferences: JSON.parse(rows[0].preferences || '{}') });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur serveur', error: error.message });
+  }
+});
+// Mettre à jour les préférences de l'utilisateur connecté
+app.put('/api/user/preferences', isAuthenticated, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { preferences } = req.body;
+    if (!preferences) {
+      return res.status(400).json({ success: false, message: 'Préférences manquantes' });
+    }
+    await mysqlPool.execute(
+      'UPDATE users SET preferences = ? WHERE id = ?',
+      [JSON.stringify(preferences), userId]
+    );
+    res.json({ success: true, message: 'Préférences mises à jour' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur serveur', error: error.message });
+  }
+});
+
+// Route pour récupérer l'historique des messages d'une conversation (MySQL)
+app.get('/api/conversations/:conversationId/messages', isAuthenticated, async (req, res) => {
+  const { conversationId } = req.params;
+  try {
+    const [rows] = await mysqlPool.execute(
+      'SELECT * FROM messages WHERE conversationId = ? ORDER BY timestamp ASC',
+      [conversationId]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la récupération des messages.' });
+  }
+});
+
+// Route pour récupérer tous les messages d'un utilisateur, groupés par conversationId
+app.get('/api/user/:userId/messages', isAuthenticated, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const [rows] = await mysqlPool.execute(
+      'SELECT * FROM messages WHERE userId = ? OR (sender = "bot" AND conversationId IN (SELECT id FROM conversations WHERE userId = ?)) ORDER BY conversationId, timestamp ASC',
+      [userId, userId]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la récupération des messages.' });
+  }
+});
+
+// Route pour récupérer toutes les conversations d'un utilisateur
+app.get('/api/user/:userId/conversations', isAuthenticated, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const [rows] = await mysqlPool.execute(
+      'SELECT * FROM conversations WHERE userId = ? ORDER BY createdAt DESC',
+      [userId]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la récupération des conversations.' });
   }
 });
 
