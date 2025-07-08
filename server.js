@@ -790,10 +790,11 @@ app.post('/api/generate-keys', (req, res) => {
 // Nouvelle route pour sauvegarder les préférences utilisateur par bot
 app.post('/api/bot-preferences', isAuthenticated, (req, res) => {
   const userId = req.user.id;
-  const { botId, preferences } = req.body;
+  const botId = 1; // On force le bot islamique
+  const { preferences } = req.body;
 
-  if (!botId || !preferences) {
-    return res.status(400).json({ message: 'Bot ID et préférences sont requis.' });
+  if (!preferences) {
+    return res.status(400).json({ message: 'Préférences sont requises.' });
   }
 
   try {
@@ -808,7 +809,7 @@ app.post('/api/bot-preferences', isAuthenticated, (req, res) => {
 // Modifier la route pour récupérer les conversations afin d'inclure les préférences
 app.get('/api/conversations/:botId', isAuthenticated, (req, res) => {
   const userId = req.user.id;
-  const botId = Number(req.params.botId);
+  const botId = 1; // On force le bot islamique
 
   try {
     const conversations = getConversationsForUserBot(userId, botId);
@@ -824,8 +825,9 @@ app.get('/api/conversations/:botId', isAuthenticated, (req, res) => {
 // Route pour supprimer une conversation
 app.delete('/api/conversations/:botId/:conversationId', isAuthenticated, async (req, res) => {
   try {
-    const { botId, conversationId } = req.params;
+    const { conversationId } = req.params;
     const userId = req.user.id;
+    const botId = 1; // On force le bot islamique
 
     const success = await deleteConversationMySQL(userId, botId, conversationId);
     
@@ -873,7 +875,7 @@ app.put('/api/conversations/:botId/:conversationId/title', isAuthenticated, asyn
 // Route pour rechercher des messages dans une conversation spécifique
 app.get('/api/messages/:botId/:conversationId/search', isAuthenticated, async (req, res) => {
   const userId = req.user.id;
-  const botId = parseInt(req.params.botId);
+  const botId = 1; // On force le bot islamique
   const conversationId = parseInt(req.params.conversationId);
   const query = req.query.query;
 
@@ -956,11 +958,8 @@ app.get('/api/test/sync-user', isAuthenticated, async (req, res) => {
 app.post('/api/conversations', isAuthenticated, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { botId, title } = req.body;
-    const usedBotId = botId ? Number(botId) : 1;
-    if (!usedBotId || isNaN(usedBotId)) {
-      return res.status(400).json({ message: 'botId requis et doit être un nombre' });
-    }
+    const { title } = req.body;
+    const usedBotId = 1; // On force le bot islamique
     // Vérifier que le bot existe dans MySQL
     const [bots] = await mysqlPool.execute('SELECT * FROM bots WHERE id = ?', [usedBotId]);
     if (!bots || bots.length === 0) {
