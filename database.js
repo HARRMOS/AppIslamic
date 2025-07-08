@@ -146,7 +146,7 @@ export async function deleteConversationMySQL(userId, botId, conversationId) {
 
 export async function getConversationsForUserBot(userId, botId) {
   const [rows] = await mysqlPool.query(
-    'SELECT * FROM conversations WHERE user_id = ? AND bot_id = ?',
+    'SELECT * FROM conversations WHERE userId = ? AND bot_id = ?',
     [userId, botId]
   );
   return rows;
