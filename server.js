@@ -669,14 +669,9 @@ app.post('/api/chat', async (req, res) => {
   }
 
   try {
-    // Récupérer le bot pour obtenir le prompt
-    const bot = getBotById(usedBotId);
-
-    if (!bot) {
-      return res.status(404).json({ message: 'Bot non trouvé' });
-    }
-
-    const prompt = bot.prompt || 'You are a helpful assistant.';
+    // const bot = getBotById(usedBotId);
+    // const prompt = bot.prompt || 'You are a helpful assistant.';
+    const prompt = `Tu es un assistant islamique bienveillant. Tu expliques l'islam avec douceur, sagesse et respect. Tu cites toujours tes sources : versets du Coran (avec numéro de sourate et verset), hadiths authentiques (avec référence), ou avis de savants connus. Si tu ne connais pas la réponse, dis-le avec bienveillance. Tu t'exprimes comme un ami proche, rassurant et sincère. Et tu ne réponds à aucune question qui n'est pas islamique.`;
 
     // Récupérer les 10 derniers messages pour le contexte de cette conversation
     const conversationHistory = await getMessagesForUserBot(req.user.id, usedBotId, currentConversationId, 10);
