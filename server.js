@@ -39,7 +39,12 @@ function isAuthenticated(req, res, next) {
 
 // Configurer CORS pour autoriser les requêtes depuis le frontend
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://www.quran-pro.harrmos.com', 'https://www.quran-pro.harrmos.com'],
+  origin: [
+    'http://localhost:5173',
+    'http://www.quran-pro.harrmos.com',
+    'https://www.quran-pro.harrmos.com',
+    'https://quran-pro.harrmos.com' // Ajouté pour compatibilité sans www
+  ],
   credentials: true
 }));
 
