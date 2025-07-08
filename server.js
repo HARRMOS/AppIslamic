@@ -12,9 +12,7 @@ import {
   getUserStats,
   mysqlPool, // <-- Ajouté ici
   updateConversationTitleMySQL,
-  deleteConversationMySQL,
-  getBotById,
-  getMessagesForUserBot
+  deleteConversationMySQL
 } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';
@@ -57,8 +55,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,
-    sameSite: 'Lax',
+    secure: true,
+    sameSite: 'None',
     maxAge: 24 * 60 * 60 * 1000 // 24 heures
   }
 }));
@@ -165,7 +163,7 @@ app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
     // Répondre en 200 avec un HTML qui redirige côté client (pour que le cookie soit bien set)
-    const frontendUrl = 'https://www.quran-pro.harrmos.com/';
+    const frontendUrl = 'http://localhost:5173/';
     res.send(`
       <html>
         <head>
@@ -827,7 +825,7 @@ app.delete('/api/conversations/:botId/:conversationId', isAuthenticated, async (
     const userId = req.user.id;
 
     const success = await deleteConversationMySQL(userId, botId, conversationId);
-
+    
     if (success) {
       res.json({ success: true });
     } else {
