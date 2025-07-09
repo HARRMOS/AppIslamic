@@ -22,7 +22,8 @@ import cors from 'cors';
 import openai from './openai.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import MySQLStore from 'express-mysql-session';
+import pkg from 'express-mysql-session';
+const MySQLStore = pkg.default || pkg;
 
 dotenv.config();
 
