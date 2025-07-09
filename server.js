@@ -1096,7 +1096,8 @@ app.get('/api/user/stats/week', isAuthenticated, async (req, res) => {
 });
 
 // Stats totales
-app.get('/api/user/stats/all', isAuthenticated, async (req, res) => {
+app.get('/api/user/stats/all', authenticateJWT, async (req, res) => {
+  console.log('Route /api/user/stats/all - req.user:', req.user);
   try {
     const userId = req.user.id;
     const [rows] = await mysqlPool.execute(
