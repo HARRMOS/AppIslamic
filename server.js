@@ -143,6 +143,14 @@ async function addMessageMySQL(userId, botId, conversationId, sender, text, cont
   );
 }
 
+// Désactive le cache pour la route /auth/status (important pour Safari/cookies)
+app.use('/auth/status', (req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  res.set('Surrogate-Control', 'no-store');
+  next();
+});
 // Route pour vérifier l'état de l'authentification (pour le frontend)
 app.get('/auth/status', async (req, res) => {
   console.log('=== Début de la requête /auth/status ===');
