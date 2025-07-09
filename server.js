@@ -203,6 +203,7 @@ app.get('/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 // Route de callback après l'authentification Google
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5174';
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
@@ -220,8 +221,7 @@ app.get('/auth/google/callback',
       { expiresIn: '7d' }
     );
     // Rediriger vers le frontend avec le token dans l’URL
-    // (adapte l’URL à ton frontend)
-    res.redirect(`http://localhost:5174/auth/callback?token=${token}`);
+    res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
   }
 );
 
