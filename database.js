@@ -9,8 +9,20 @@ const mysqlPool = mysql.createPool({
   database: 'islamicApp',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  connectTimeout: 10000, // 10s
+  acquireTimeout: 10000  // 10s
 });
+
+// Ping automatique toutes les 5 minutes pour garder la connexion vivante
+setInterval(async () => {
+  try {
+    await mysqlPool.query('SELECT 1');
+    // console.log('MySQL keep-alive ping');
+  } catch (err) {
+    console.error('Erreur MySQL keep-alive ping:', err);
+  }
+}, 5 * 60 * 1000);
 
 // Fonction pour synchroniser un utilisateur vers la base MySQL (avec fetch)
 const SQL_API_URL = process.env.SQL_API_URL || (process.env.NODE_ENV === 'production'
@@ -88,8 +100,13 @@ export async function findOrCreateUser(googleId, username, email) {
 }
 
 export async function findUserById(id) {
-  const [rows] = await mysqlPool.query('SELECT * FROM users WHERE id = ?', [id]);
-  return rows[0] || null;
+  try {
+    const [rows] = await mysqlPool.query('SELECT * FROM users WHERE id = ?', [id]);
+    return rows[0] || null;
+  } catch (err) {
+    console.error('Erreur MySQL dans findUserById:', err);
+    return null;
+  }
 }
 
 export async function checkGlobalChatbotQuota(userId, email) {
