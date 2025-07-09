@@ -149,7 +149,7 @@ app.get('/auth/status', async (req, res) => {
     console.log('Utilisateur authentifié, ID:', req.user.id);
     const responseUser = { 
       id: req.user.id, 
-      name: req.user.name, 
+      name: req.user.name || req.user.username, 
       email: req.user.email, 
       mysql_id: req.user.mysql_id
     };
