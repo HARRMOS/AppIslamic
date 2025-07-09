@@ -52,12 +52,14 @@ function authenticateJWT(req, res, next) {
     return next();
   }
   const authHeader = req.headers['authorization'];
+  console.log('--- [AUTH] ---');
   console.log('Authorization header reçu:', authHeader);
   if (!authHeader) {
     console.log('Aucun header Authorization reçu');
     return res.status(401).json({ message: 'Token manquant' });
   }
   const token = authHeader.split(' ')[1];
+  console.log('Token extrait:', token);
   if (!token) {
     console.log('Header Authorization mal formé');
     return res.status(401).json({ message: 'Token manquant' });
@@ -68,12 +70,14 @@ function authenticateJWT(req, res, next) {
       console.log('Erreur de vérification JWT:', err.message);
       return res.status(401).json({ message: 'Token invalide ou expiré', error: err.message });
     }
+    console.log('Payload décodé:', decoded);
     // On peut aller chercher l'utilisateur en base si besoin
     const user = await findUserById(decoded.id);
     if (!user) {
       console.log('Utilisateur non trouvé pour l’ID:', decoded.id);
       return res.status(404).json({ message: 'Utilisateur non trouvé' });
     }
+    console.log('Utilisateur trouvé:', user.id, user.email);
     req.user = user;
     next();
   });
