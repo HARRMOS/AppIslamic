@@ -72,14 +72,15 @@ function authenticateJWT(req, res, next) {
 }
 
 const allowedOrigins = [
-  'https://www.quran-pro.harrmos.com',      // Domaine frontend principal
-  'https://quran-pro.harrmos.com',          // Variante sans www
-  'https://appislamic.onrender.com',        // Backend Render (pour tests directs)
+  'https://www.quran-pro.harrmos.com',
+  'https://quran-pro.harrmos.com',
+  'https://appislamic.onrender.com',
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
+    console.log('CORS origin:', origin);
     // Autorise les requêtes sans origin (ex: mobile, redirection OAuth)
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
