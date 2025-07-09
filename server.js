@@ -78,17 +78,18 @@ const allowedOrigins = [
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
 
-app.use(cors({
+const corsOptions = {
   origin: function (origin, callback) {
-    // Autorise les requêtes sans origin (ex: outils internes, curl)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
+    // Autorise les requêtes sans origin (ex: mobile, redirection OAuth)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
     }
-    return callback(new Error('Not allowed by CORS'));
   },
-  credentials: true
-}));
+  credentials: true,
+};
+app.use(cors(corsOptions));
 
 // Ajouter le middleware pour parser le JSON
 app.use(express.json());
