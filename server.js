@@ -361,6 +361,9 @@ app.post('/api/progress', authenticateJWT, async (req, res) => {
   }
 });
 app.get('/api/progress/:userId', authenticateJWT, async (req, res) => {
+  if (req.user.id !== req.params.userId) {
+    return res.status(403).json({ message: 'Accès interdit' });
+  }
   try {
     const { userId } = req.params;
     const [rows] = await mysqlPool.execute(
@@ -385,7 +388,10 @@ app.post('/api/history', authenticateJWT, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-app.get('/api/history/:userId/:limit', isAuthenticated, async (req, res) => {
+app.get('/api/history/:userId/:limit', authenticateJWT, async (req, res) => {
+  if (req.user.id !== req.params.userId) {
+    return res.status(403).json({ message: 'Accès interdit' });
+  }
   try {
     const { userId, limit } = req.params;
     const limitNum = Math.min(parseInt(limit) || 50, 100);
@@ -415,7 +421,10 @@ app.post('/api/favorites', isAuthenticated, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-app.get('/api/favorites/:userId', isAuthenticated, async (req, res) => {
+app.get('/api/favorites/:userId', authenticateJWT, async (req, res) => {
+  if (req.user.id !== req.params.userId) {
+    return res.status(403).json({ message: 'Accès interdit' });
+  }
   try {
     const { userId } = req.params;
     const [rows] = await mysqlPool.execute(
@@ -489,7 +498,10 @@ app.post('/api/goals', isAuthenticated, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-app.get('/api/goals/:userId', isAuthenticated, async (req, res) => {
+app.get('/api/goals/:userId', authenticateJWT, async (req, res) => {
+  if (req.user.id !== req.params.userId) {
+    return res.status(403).json({ message: 'Accès interdit' });
+  }
   try {
     const { userId } = req.params;
     const [rows] = await mysqlPool.execute(
@@ -1192,9 +1204,12 @@ app.get('/api/conversations/:conversationId/messages', isAuthenticated, async (r
 });
 
 // Route pour récupérer tous les messages d'un utilisateur, groupés par conversationId
-app.get('/api/user/:userId/messages', isAuthenticated, async (req, res) => {
-  const { userId } = req.params;
+app.get('/api/user/:userId/messages', authenticateJWT, async (req, res) => {
+  if (req.user.id !== req.params.userId) {
+    return res.status(403).json({ message: 'Accès interdit' });
+  }
   try {
+    const { userId } = req.params;
     const [rows] = await mysqlPool.execute(
       'SELECT * FROM messages WHERE userId = ? OR (sender = "bot" AND conversationId IN (SELECT id FROM conversations WHERE userId = ?)) ORDER BY conversationId, timestamp ASC',
       [userId, userId]
@@ -1206,12 +1221,14 @@ app.get('/api/user/:userId/messages', isAuthenticated, async (req, res) => {
 });
 
 // Route pour récupérer toutes les conversations d'un utilisateur
-app.get('/api/user/:userId/conversations', isAuthenticated, async (req, res) => {
-  const { userId } = req.params;
+app.get('/api/user/:userId/conversations', authenticateJWT, async (req, res) => {
+  if (req.user.id !== req.params.userId) {
+    return res.status(403).json({ message: 'Accès interdit' });
+  }
   try {
     const [rows] = await mysqlPool.execute(
       'SELECT * FROM conversations WHERE userId = ? ORDER BY createdAt DESC',
-      [userId]
+      [req.params.userId]
     );
     res.json(rows);
   } catch (error) {
