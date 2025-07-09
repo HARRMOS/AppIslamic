@@ -74,6 +74,7 @@ function authenticateJWT(req, res, next) {
 const allowedOrigins = [
   'https://www.quran-pro.harrmos.com',
   'https://quran-pro.harrmos.com',
+  'http://quran-pro.harrmos.com',
   'https://appislamic.onrender.com',
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
