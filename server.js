@@ -196,7 +196,7 @@ app.get('/auth/google',
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
-    // Répondre en 200 avec un HTML qui redirige côté client (pour que le cookie soit bien set)
+    // Redirection côté client pour garantir la pose du cookie
     const frontendUrl = 'https://www.quran-pro.harrmos.com/';
     res.send(`
       <html>
