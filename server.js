@@ -591,10 +591,10 @@ app.get('/api/bots', (req, res) => {
      res.status(500).json({ error: 'Erreur serveur' });
    }
 });
-// Route pour créer un nouveau bot
-app.post('/api/bots', (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: 'Non authentifié' });
+// Route pour créer un nouveau bot (admin uniquement)
+app.post('/api/bots', authenticateJWT, async (req, res) => {
+  if (req.user.email !== 'mohammadharris200528@gmail.com') { // Vérifier si l'utilisateur est admin
+    return res.status(403).json({ message: 'Accès refusé. Réservé à l\'administrateur.' });
   }
   const { name, description, price, category, image, prompt } = req.body;
   
@@ -626,10 +626,10 @@ app.put('/api/bots/:id', (req, res) => {
   }
 });
 
-// Route pour supprimer un bot
-app.delete('/api/bots/:id', (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: 'Non authentifié' });
+// Route pour supprimer un bot (admin uniquement)
+app.delete('/api/bots/:id', authenticateJWT, async (req, res) => {
+  if (req.user.email !== 'mohammadharris200528@gmail.com') {
+    return res.status(403).json({ message: 'Accès refusé. Réservé à l\'administrateur.' });
   }
   const botId = req.params.id;
   
@@ -646,25 +646,14 @@ app.delete('/api/bots/:id', (req, res) => {
 
 
 // Nouvelle route pour récupérer les messages pour un utilisateur et un bot spécifiques
-app.get('/api/messages', async (req, res) => {
+app.get('/api/messages', authenticateJWT, async (req, res) => {
   console.log('=== Début de la requête /api/messages ===');
   console.log('Headers:', req.headers);
   console.log('Cookies:', req.cookies);
   console.log('Session (avant Passport): ', req.session);
-  console.log('isAuthenticated (après Passport): ', req.isAuthenticated());
-  console.log('User (après Passport): ', req.user);
-
-  // Commenter temporairement la vérification d'authentification
-  // if (!req.isAuthenticated()) {
-  //   console.log('/api/messages - Non authentifié après Passport');
-  //   return res.status(401).json({ message: 'Non authentifié' });
-  // }
-
-  console.log('/api/messages - Authentifié (vérification temporairement désactivée) ou non authentifié');
-  const userId = req.query.userId;
+  // Utilisateur authentifié via JWT
+  const userId = req.user.id;
   const botId = Number(req.query.botId);
-
-  // Récupérer l'identifiant de conversation, utiliser 0 par défaut si non spécifié
   const conversationId = Number(req.query.conversationId) || 0;
 
   if (!userId || isNaN(botId)) {
@@ -684,26 +673,25 @@ app.get('/api/messages', async (req, res) => {
 });
 
 // Route pour interagir avec l'API OpenAI (renommée en /api/chat)
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', authenticateJWT, async (req, res) => {
   console.log('=== Début de la requête /api/chat ===');
   console.log('Headers:', req.headers);
   console.log('Cookies:', req.cookies);
   console.log('Session (avant Passport): ', req.session);
-  console.log('isAuthenticated (après Passport): ', req.isAuthenticated());
-  console.log('User (après Passport): ', req.user);
+  // On n'utilise plus Passport ici
+  // console.log('isAuthenticated (après Passport): ', req.isAuthenticated());
+  // console.log('User (après Passport): ', req.user);
 
-  if (!req.isAuthenticated()) {
-    console.log('/api/chat - Non authentifié après Passport');
-    return res.status(401).json({ message: 'Non authentifié' });
-  }
+  // Utilisateur authentifié via JWT
+  const userId = req.user.id;
+  console.log('/api/chat - Utilisateur authentifié, ID:', userId);
 
   // Vérification du quota global de messages chatbot
-  const quota = await checkGlobalChatbotQuota(req.user.id, req.user.email);
+  const quota = await checkGlobalChatbotQuota(userId, req.user.email);
   if (!quota.canSend) {
     return res.status(402).json({ message: `Quota de messages gratuits dépassé. Veuillez acheter plus de messages pour continuer à utiliser le chatbot.` });
   }
 
-  console.log('/api/chat - Utilisateur authentifié, ID:', req.user.id);
   const { message, botId, conversationId, title } = req.body;
   const usedBotId = botId ? Number(botId) : 1;
 
@@ -720,7 +708,7 @@ app.post('/api/chat', async (req, res) => {
       // Création de la conversation dans MySQL
       const [result] = await mysqlPool.execute(
         'INSERT INTO conversations (userId, botId, title) VALUES (?, ?, ?)',
-        [req.user.id, usedBotId, newConvTitle]
+        [userId, usedBotId, newConvTitle]
       );
       currentConversationId = result.insertId;
       console.log('Nouvelle conversation créée avec ID (MySQL):', currentConversationId);
@@ -730,7 +718,7 @@ app.post('/api/chat', async (req, res) => {
     }
   } else if (title && currentConversationId > 0) {
     try {
-      await updateConversationTitle(req.user.id, usedBotId, Number(conversationId), title);
+      await updateConversationTitle(userId, usedBotId, Number(conversationId), title);
       console.log(`Titre de la conversation ${currentConversationId} mis à jour.`);
     } catch (titleUpdateError) {
       console.error(`Erreur lors de la mise à jour du titre de la conversation ${currentConversationId}:`, titleUpdateError);
@@ -743,7 +731,7 @@ app.post('/api/chat', async (req, res) => {
     const prompt = `Tu es un assistant islamique bienveillant. Tu expliques l'islam avec douceur, sagesse et respect. Tu cites toujours tes sources : versets du Coran (avec numéro de sourate et verset), hadiths authentiques (avec référence), ou avis de savants connus. Si tu ne connais pas la réponse, dis-le avec bienveillance. Tu t'exprimes comme un ami proche, rassurant et sincère. Et tu ne réponds à aucune question qui n'est pas islamique.`;
 
     // Récupérer les 10 derniers messages pour le contexte de cette conversation
-    const conversationHistory = await getMessagesForUserBot(req.user.id, usedBotId, currentConversationId, 10);
+    const conversationHistory = await getMessagesForUserBot(userId, usedBotId, currentConversationId, 10);
 
     const messagesForGpt = [
       { role: "system", content: prompt }
@@ -769,11 +757,11 @@ app.post('/api/chat', async (req, res) => {
 
     const reply = completion.choices[0].message.content;
 
-    await addMessageMySQL(req.user.id, usedBotId, currentConversationId, 'user', message);
-    await addMessageMySQL(req.user.id, usedBotId, currentConversationId, 'bot', reply);
+    await addMessageMySQL(userId, usedBotId, currentConversationId, 'user', message);
+    await addMessageMySQL(userId, usedBotId, currentConversationId, 'bot', reply);
 
     // Incrémenter le compteur de messages chatbot
-    incrementChatbotMessagesUsed(req.user.id);
+    incrementChatbotMessagesUsed(userId);
 
     res.status(200).json({ message: reply });
 
@@ -789,12 +777,11 @@ app.post('/api/chat', async (req, res) => {
 });
 
 // Route pour récupérer le quota de messages chatbot restant
-app.get('/api/chatbot/quota', async (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: 'Non authentifié' });
-  }
+app.get('/api/chatbot/quota', authenticateJWT, async (req, res) => {
+  // Utilisateur authentifié via JWT
+  const userId = req.user.id;
   // Aller chercher l'utilisateur dans MySQL
-  const [rows] = await mysqlPool.query('SELECT chatbotMessagesUsed, chatbotMessagesQuota FROM users WHERE id = ?', [req.user.id]);
+  const [rows] = await mysqlPool.query('SELECT chatbotMessagesUsed, chatbotMessagesQuota FROM users WHERE id = ?', [userId]);
   if (!rows[0]) return res.status(404).json({ message: 'Utilisateur non trouvé' });
   const used = rows[0].chatbotMessagesUsed ?? 0;
   const quota = rows[0].chatbotMessagesQuota ?? 1000;
@@ -826,8 +813,8 @@ app.use((err, req, res, next) => {
 });
 
 // Nouvelle route pour générer des clés d'activation (pour l'administrateur)
-app.post('/api/generate-keys', (req, res) => {
-  if (!req.isAuthenticated() || req.user.email !== 'mohammadharris200528@gmail.com') { // Vérifier si l'utilisateur est admin
+app.post('/api/generate-keys', authenticateJWT, async (req, res) => {
+  if (req.user.email !== 'mohammadharris200528@gmail.com') { // Vérifier si l'utilisateur est admin
     return res.status(403).json({ message: 'Accès refusé. Réservé à l\'administrateur.' });
   }
 
@@ -938,7 +925,7 @@ app.put('/api/conversations/:botId/:conversationId/title', isAuthenticated, asyn
 });
 
 // Route pour rechercher des messages dans une conversation spécifique
-app.get('/api/messages/:botId/:conversationId/search', isAuthenticated, async (req, res) => {
+app.get('/api/messages/:botId/:conversationId/search', authenticateJWT, async (req, res) => {
   const userId = req.user.id;
   const botId = 1; // On force le bot islamique
   const conversationId = parseInt(req.params.conversationId);
