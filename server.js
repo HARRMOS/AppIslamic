@@ -37,14 +37,22 @@ function isAuthenticated(req, res, next) {
   res.status(401).json({ message: 'Non authentifié' });
 }
 
-// Configurer CORS pour autoriser les requêtes depuis le frontend
+const allowedOrigins = [
+  'https://www.quran-pro.harrmos.com',      // Domaine frontend principal
+  'https://quran-pro.harrmos.com',          // Variante sans www
+  'https://appislamic.onrender.com',        // Backend Render (pour tests directs)
+  // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://www.quran-pro.harrmos.com',
-    'https://www.quran-pro.harrmos.com',
-    'https://quran-pro.harrmos.com' // Ajouté pour compatibilité sans www
-  ],
+  origin: function (origin, callback) {
+    // Autorise les requêtes sans origin (ex: outils internes, curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 
