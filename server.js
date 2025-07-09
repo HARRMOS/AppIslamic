@@ -38,14 +38,6 @@ app.disable('etag');
 
 app.set('trust proxy', 1);
 
-// Middleware pour vérifier l'authentification
-function isAuthenticated(req, res, next) {
-  if (req.isAuthenticated()) {
-    return next();
-  }
-  res.status(401).json({ message: 'Non authentifié' });
-}
-
 // Middleware pour vérifier le JWT dans l'en-tête Authorization
 function authenticateJWT(req, res, next) {
   if (req.method === 'OPTIONS') {
@@ -301,20 +293,24 @@ app.get('/api/users/:userId', async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-app.put('/api/users/:userId/preferences', isAuthenticated, async (req, res) => {
+app.put('/api/users/:userId/preferences', authenticateJWT, async (req, res) => {
   try {
-    const { userId } = req.params;
+    const userId = req.user.id;
     const { preferences } = req.body;
-    const [result] = await mysqlPool.execute(
+    if (!preferences) {
+      return res.status(400).json({ success: false, message: 'Préférences manquantes' });
+    }
+    // Vérifier que l'utilisateur modifie bien ses propres préférences
+    if (userId !== req.params.userId) {
+      return res.status(403).json({ success: false, message: 'Accès interdit' });
+    }
+    await mysqlPool.execute(
       'UPDATE users SET preferences = ? WHERE id = ?',
       [JSON.stringify(preferences), userId]
     );
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Utilisateur non trouvé' });
-    }
-    res.json({ success: true, message: 'Préférences mises à jour' });
+    res.json({ success: true, message: 'Préférences mises à jour.' });
   } catch (error) {
-    res.status(500).json({ error: 'Erreur serveur' });
+    res.status(500).json({ success: false, message: 'Erreur lors de la mise à jour des préférences.' });
   }
 });
 // ===================== ROUTES STATISTIQUES =====================
@@ -413,9 +409,10 @@ app.get('/api/history/:userId/:limit', authenticateJWT, async (req, res) => {
   }
 });
 // ===================== ROUTES FAVORIS =====================
-app.post('/api/favorites', isAuthenticated, async (req, res) => {
+app.post('/api/favorites', authenticateJWT, async (req, res) => {
   try {
-    const { userId, type, referenceId, referenceText, notes } = req.body;
+    const userId = req.user.id;
+    const { type, referenceId, referenceText, notes } = req.body;
     const [result] = await mysqlPool.execute(
       'INSERT INTO favorites (user_id, type, reference_id, reference_text, notes) VALUES (?, ?, ?, ?, ?)',
       [userId, type, referenceId, referenceText, notes]
@@ -440,7 +437,7 @@ app.get('/api/favorites/:userId', authenticateJWT, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-app.delete('/api/favorites/:favoriteId', isAuthenticated, async (req, res) => {
+app.delete('/api/favorites/:favoriteId', authenticateJWT, async (req, res) => {
   try {
     const { favoriteId } = req.params;
     const [result] = await mysqlPool.execute(
@@ -490,9 +487,10 @@ app.put('/api/sessions/:sessionId/end', authenticateJWT, async (req, res) => {
   }
 });
 // ===================== ROUTES OBJECTIFS =====================
-app.post('/api/goals', isAuthenticated, async (req, res) => {
+app.post('/api/goals', authenticateJWT, async (req, res) => {
   try {
-    const { userId, goalType, targetValue, startDate, endDate } = req.body;
+    const userId = req.user.id;
+    const { goalType, targetValue, startDate, endDate } = req.body;
     const [result] = await mysqlPool.execute(
       'INSERT INTO reading_goals (user_id, goal_type, target_value, start_date, end_date) VALUES (?, ?, ?, ?, ?)',
       [userId, goalType, targetValue, startDate, endDate]
@@ -517,17 +515,20 @@ app.get('/api/goals/:userId', authenticateJWT, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-app.put('/api/goals/:goalId', isAuthenticated, async (req, res) => {
+app.put('/api/goals/:goalId', authenticateJWT, async (req, res) => {
   try {
+    const userId = req.user.id;
     const { goalId } = req.params;
     const { currentValue, isCompleted } = req.body;
+    // Vérifier que l'objectif appartient à l'utilisateur
+    const [rows] = await mysqlPool.execute('SELECT * FROM reading_goals WHERE id = ? AND user_id = ?', [goalId, userId]);
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Objectif non trouvé' });
+    }
     const [result] = await mysqlPool.execute(
       'UPDATE reading_goals SET current_value = ?, is_completed = ? WHERE id = ?',
       [currentValue, isCompleted, goalId]
     );
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Objectif non trouvé' });
-    }
     res.json({ success: true, message: 'Objectif mis à jour' });
   } catch (error) {
     res.status(500).json({ error: 'Erreur serveur' });
@@ -875,26 +876,25 @@ app.get('/api/conversations/:botId', authenticateJWT, (req, res) => {
 });
 
 // Route pour supprimer une conversation
-app.delete('/api/conversations/:botId/:conversationId', isAuthenticated, async (req, res) => {
+app.delete('/api/conversations/:botId/:conversationId', authenticateJWT, async (req, res) => {
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
     const botId = 1; // On force le bot islamique
 
     const success = await deleteConversationMySQL(userId, botId, conversationId);
-    
     if (success) {
       res.json({ success: true });
     } else {
-      res.status(404).json({ error: 'Conversation non trouvée' });
+      res.status(404).json({ success: false, message: 'Conversation non trouvée ou non supprimée.' });
     }
   } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de la suppression de la conversation' });
+    res.status(500).json({ message: 'Erreur lors de la suppression de la conversation.' });
   }
 });
 
 // Route pour mettre à jour le titre d'une conversation
-app.put('/api/conversations/:botId/:conversationId/title', isAuthenticated, async (req, res) => {
+app.put('/api/conversations/:botId/:conversationId/title', authenticateJWT, async (req, res) => {
   try {
     const { botId, conversationId } = req.params;
     const userId = req.user.id;
@@ -1038,7 +1038,7 @@ app.post('/api/conversations', authenticateJWT, async (req, res) => {
 });
 
 // Route de test pour générer des stats sur 30 jours
-app.post('/api/test/generate-stats', isAuthenticated, async (req, res) => {
+app.post('/api/test/generate-stats', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     await mysqlPool.execute('DELETE FROM quran_stats WHERE user_id = ?', [userId]);
@@ -1049,14 +1049,13 @@ app.post('/api/test/generate-stats', isAuthenticated, async (req, res) => {
       const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       values.push([userId, date, 100 + i * 10, 2 + i, 0, 0]);
     }
-    // Insertion en une seule requête
     await mysqlPool.query(
       'INSERT INTO quran_stats (user_id, date, hasanat, verses, time_seconds, pages_read) VALUES ?',
       [values]
     );
-    res.json({ success: true, message: 'Stats de test générées pour 30 jours.' });
+    res.json({ success: true, message: 'Stats générées pour 30 jours.' });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Erreur lors de la génération des stats.', error: error.message });
+    res.status(500).json({ message: 'Erreur lors de la génération des stats.' });
   }
 });
 
@@ -1163,7 +1162,7 @@ app.get('/api/user/preferences', authenticateJWT, async (req, res) => {
   }
 });
 // Mettre à jour les préférences de l'utilisateur connecté
-app.put('/api/user/preferences', isAuthenticated, async (req, res) => {
+app.put('/api/user/preferences', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     const { preferences } = req.body;
@@ -1181,16 +1180,21 @@ app.put('/api/user/preferences', isAuthenticated, async (req, res) => {
 });
 
 // Route pour récupérer l'historique des messages d'une conversation (MySQL)
-app.get('/api/conversations/:conversationId/messages', isAuthenticated, async (req, res) => {
+app.get('/api/conversations/:conversationId/messages', authenticateJWT, async (req, res) => {
   const { conversationId } = req.params;
   try {
+    // Optionnel : vérifier que la conversation appartient à l'utilisateur
+    const [convs] = await mysqlPool.execute('SELECT * FROM conversations WHERE id = ? AND userId = ?', [conversationId, req.user.id]);
+    if (!convs.length) {
+      return res.status(403).json({ message: 'Accès interdit à cette conversation.' });
+    }
     const [rows] = await mysqlPool.execute(
       'SELECT * FROM messages WHERE conversationId = ? ORDER BY timestamp ASC',
       [conversationId]
     );
     res.json(rows);
   } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de la récupération des messages.' });
+    res.status(500).json({ message: 'Erreur lors de la récupération des messages' });
   }
 });
 
