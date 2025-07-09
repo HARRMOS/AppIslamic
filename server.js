@@ -27,6 +27,9 @@ dotenv.config();
 
 const app = express();
 
+// Désactive l'ETag globalement pour éviter les 304 (important pour Safari/cookies)
+app.disable('etag');
+
 app.set('trust proxy', 1);
 
 // Middleware pour vérifier l'authentification
