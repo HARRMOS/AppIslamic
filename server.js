@@ -49,6 +49,7 @@ function isAuthenticated(req, res, next) {
 // Middleware pour vérifier le JWT dans l'en-tête Authorization
 function authenticateJWT(req, res, next) {
   const authHeader = req.headers['authorization'];
+  console.log('Authorization header reçu:', authHeader);
   if (!authHeader) {
     return res.status(401).json({ message: 'Token manquant' });
   }
