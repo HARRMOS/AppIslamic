@@ -25,6 +25,7 @@ import cors from 'cors';
 import openai from './openai.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import jwt from 'jsonwebtoken';
 
 const sessionStore = new MySQLStore({}, mysqlPool);
 
@@ -43,6 +44,31 @@ function isAuthenticated(req, res, next) {
     return next();
   }
   res.status(401).json({ message: 'Non authentifié' });
+}
+
+// Middleware pour vérifier le JWT dans l'en-tête Authorization
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader) {
+    return res.status(401).json({ message: 'Token manquant' });
+  }
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ message: 'Token manquant' });
+  }
+  const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+  jwt.verify(token, JWT_SECRET, async (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ message: 'Token invalide' });
+    }
+    // On peut aller chercher l'utilisateur en base si besoin
+    const user = await findUserById(decoded.id);
+    if (!user) {
+      return res.status(404).json({ message: 'Utilisateur non trouvé' });
+    }
+    req.user = user;
+    next();
+  });
 }
 
 const allowedOrigins = [
@@ -76,6 +102,7 @@ console.log('========================');
 
 // Configurer le middleware de session
 app.use(session({
+
   secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
   resave: false,
   saveUninitialized: false,
@@ -99,7 +126,7 @@ console.log('Configuration de session:', {
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:3000/auth/google/callback"
+    callbackURL: process.env.GOOGLE_CALLBACK_URL 
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
@@ -161,31 +188,14 @@ app.use('/auth/status', (req, res, next) => {
   next();
 });
 // Route pour vérifier l'état de l'authentification (pour le frontend)
-app.get('/auth/status', async (req, res) => {
-  console.log('=== Début de la requête /auth/status ===');
-  console.log('Headers:', req.headers);
-  console.log('Raw Cookie Header:', req.headers.cookie);
-  console.log('Cookies:', req.cookies);
-  console.log('Session:', req.session);
-  console.log('isAuthenticated:', req.isAuthenticated());
-  console.log('User:', req.user);
-
-  if (req.isAuthenticated()) {
-    console.log('Utilisateur authentifié, ID:', req.user.id);
-    const responseUser = { 
-      id: req.user.id, 
-      name: req.user.name || req.user.username, 
-      email: req.user.email, 
-      mysql_id: req.user.mysql_id
-    };
-    console.log('/auth/status - Envoi de la réponse user (authentifié): ', responseUser);
-    res.status(200).json({ user: responseUser });
-  } else {
-    console.log('Utilisateur non authentifié');
-    console.log('/auth/status - Envoi de la réponse user (non authentifié): ', null);
-    res.status(200).json({ user: null });
-  }
-  console.log('=== Fin de la requête /auth/status ===');
+app.get('/auth/status', authenticateJWT, async (req, res) => {
+  const responseUser = {
+    id: req.user.id,
+    name: req.user.name || req.user.username,
+    email: req.user.email,
+    mysql_id: req.user.mysql_id
+  };
+  res.status(200).json({ user: responseUser });
 });
 
 // Route pour initier l'authentification Google
@@ -196,19 +206,22 @@ app.get('/auth/google',
 app.get('/auth/google/callback',
   passport.authenticate('google', { failureRedirect: '/login' }),
   (req, res) => {
-    // Redirection côté client pour garantir la pose du cookie
-    const frontendUrl = 'https://www.quran-pro.harrmos.com/';
-    res.send(`
-      <html>
-        <head>
-          <meta http-equiv="refresh" content="0;url=${frontendUrl}" />
-          <script>window.location.href = "${frontendUrl}";</script>
-        </head>
-        <body>
-          Redirection...
-        </body>
-      </html>
-    `);
+    // L'utilisateur est dans req.user (grâce à Passport)
+    const user = req.user;
+    // Générer le JWT (valable 7 jours par exemple)
+    const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+    const token = jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+        prenom: user.prenom
+      },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    // Rediriger vers le frontend avec le token dans l’URL
+    // (adapte l’URL à ton frontend)
+    res.redirect(`http://localhost:5174/auth/callback?token=${token}`);
   }
 );
 
