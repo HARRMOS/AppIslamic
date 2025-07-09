@@ -1077,7 +1077,8 @@ app.get('/api/user/stats/today', authenticateJWT, async (req, res) => {
 });
 
 // Stats de la semaine
-app.get('/api/user/stats/week', isAuthenticated, async (req, res) => {
+app.get('/api/user/stats/week', authenticateJWT, async (req, res) => {
+  console.log('Route /api/user/stats/week - req.user:', req.user);
   try {
     const userId = req.user.id;
     const [rows] = await mysqlPool.execute(
@@ -1116,7 +1117,8 @@ app.get('/api/user/stats/all', authenticateJWT, async (req, res) => {
 });
 
 // Route pour récupérer les stats journalières des 30 derniers jours pour l'utilisateur connecté
-app.get('/api/user/stats/daily', isAuthenticated, async (req, res) => {
+app.get('/api/user/stats/daily', authenticateJWT, async (req, res) => {
+  console.log('Route /api/user/stats/daily - req.user:', req.user);
   try {
     const userId = req.user.id;
     const [rows] = await mysqlPool.execute(
@@ -1142,6 +1144,7 @@ app.get('/api/user/stats/daily', isAuthenticated, async (req, res) => {
 // ===================== ROUTES PREFERENCES UTILISATEUR =====================
 // Récupérer les préférences de l'utilisateur connecté
 app.get('/api/user/preferences', authenticateJWT, async (req, res) => {
+  console.log('Route /api/user/preferences - req.user:', req.user);
   try {
     const userId = req.user.id;
     const [rows] = await mysqlPool.execute(
