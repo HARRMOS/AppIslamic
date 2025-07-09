@@ -22,6 +22,7 @@ import cors from 'cors';
 import openai from './openai.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import MySQLStore from 'express-mysql-session';
 
 dotenv.config();
 
@@ -70,10 +71,13 @@ console.log('PORT:', process.env.PORT);
 console.log('========================');
 
 // Configurer le middleware de session
+const sessionStore = new MySQLStore({}, mysqlPool);
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
   resave: false,
   saveUninitialized: false,
+  store: sessionStore, // <-- Ajout du store MySQL
   cookie: {
     secure: true,
     sameSite: 'None',
