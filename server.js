@@ -74,7 +74,6 @@ function authenticateJWT(req, res, next) {
 const allowedOrigins = [
   'https://www.quran-pro.harrmos.com',
   'https://quran-pro.harrmos.com',
-  
   'https://appislamic.onrender.com',
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
@@ -307,7 +306,7 @@ app.put('/api/users/:userId/preferences', isAuthenticated, async (req, res) => {
   }
 });
 // ===================== ROUTES STATISTIQUES =====================
-app.post('/api/stats', isAuthenticated, async (req, res) => {
+app.post('/api/stats', authenticateJWT, async (req, res) => {
   console.log('POST /api/stats', req.body);
   try {
     const { userId, hasanat = 0, verses = 0, time = 0, pages = 0 } = req.body;
@@ -341,7 +340,7 @@ app.post('/api/stats', isAuthenticated, async (req, res) => {
   }
 });
 // ===================== ROUTES PROGRESSION =====================
-app.post('/api/progress', isAuthenticated, async (req, res) => {
+app.post('/api/progress', authenticateJWT, async (req, res) => {
   try {
     const { userId, surah, ayah } = req.body;
     const [result] = await mysqlPool.execute(
@@ -353,7 +352,7 @@ app.post('/api/progress', isAuthenticated, async (req, res) => {
     res.status(500).json({ error: 'Erreur lors de la sauvegarde' });
   }
 });
-app.get('/api/progress/:userId', isAuthenticated, async (req, res) => {
+app.get('/api/progress/:userId', authenticateJWT, async (req, res) => {
   try {
     const { userId } = req.params;
     const [rows] = await mysqlPool.execute(
@@ -366,7 +365,7 @@ app.get('/api/progress/:userId', isAuthenticated, async (req, res) => {
   }
 });
 // ===================== ROUTES HISTORIQUE =====================
-app.post('/api/history', isAuthenticated, async (req, res) => {
+app.post('/api/history', authenticateJWT, async (req, res) => {
   try {
     const { userId, surah, ayah, actionType, duration = 0 } = req.body;
     const [result] = await mysqlPool.execute(
@@ -436,7 +435,7 @@ app.delete('/api/favorites/:favoriteId', isAuthenticated, async (req, res) => {
   }
 });
 // ===================== ROUTES SESSIONS =====================
-app.post('/api/sessions/start', isAuthenticated, async (req, res) => {
+app.post('/api/sessions/start', authenticateJWT, async (req, res) => {
   try {
     const { userId, deviceInfo } = req.body;
     const [result] = await mysqlPool.execute(
@@ -448,7 +447,7 @@ app.post('/api/sessions/start', isAuthenticated, async (req, res) => {
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
-app.put('/api/sessions/:sessionId/end', isAuthenticated, async (req, res) => {
+app.put('/api/sessions/:sessionId/end', authenticateJWT, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { versesRead, hasanatEarned } = req.body;
@@ -830,7 +829,7 @@ app.post('/api/generate-keys', (req, res) => {
 });
 
 // Nouvelle route pour sauvegarder les préférences utilisateur par bot
-app.post('/api/bot-preferences', isAuthenticated, (req, res) => {
+app.post('/api/bot-preferences', authenticateJWT, (req, res) => {
   const userId = req.user.id;
   const botId = 1; // On force le bot islamique
   const { preferences } = req.body;
@@ -849,7 +848,7 @@ app.post('/api/bot-preferences', isAuthenticated, (req, res) => {
 });
 
 // Modifier la route pour récupérer les conversations afin d'inclure les préférences
-app.get('/api/conversations/:botId', isAuthenticated, (req, res) => {
+app.get('/api/conversations/:botId', authenticateJWT, (req, res) => {
   const userId = req.user.id;
   const botId = 1; // On force le bot islamique
 
@@ -935,7 +934,7 @@ app.get('/api/messages/:botId/:conversationId/search', isAuthenticated, async (r
 });
 
 // Route pour récupérer l'ID MySQL d'un utilisateur connecté (désormais l'id utilisateur)
-app.get('/api/user/mysql-id', isAuthenticated, async (req, res) => {
+app.get('/api/user/mysql-id', authenticateJWT, async (req, res) => {
   try {
     // Si req.user est un id (string), on le renvoie directement. Sinon, on va le chercher en base.
     let userId = req.user && typeof req.user === 'object' ? req.user.id : req.user;
@@ -949,7 +948,7 @@ app.get('/api/user/mysql-id', isAuthenticated, async (req, res) => {
 });
 
 // Route pour récupérer les stats utilisateur depuis MySQL
-app.get('/api/user/stats', isAuthenticated, async (req, res) => {
+app.get('/api/user/stats', authenticateJWT, async (req, res) => {
   try {
     const stats = await getUserStats(req.user.id);
     res.json({ success: true, stats });
@@ -962,7 +961,7 @@ app.get('/api/user/stats', isAuthenticated, async (req, res) => {
 
 
 // Route de test pour forcer la synchronisation d'un utilisateur vers MySQL
-app.get('/api/test/sync-user', isAuthenticated, async (req, res) => {
+app.get('/api/test/sync-user', authenticateJWT, async (req, res) => {
   try {
     console.log('🔄 Test de synchronisation forcée pour:', req.user.name);
     
@@ -997,7 +996,7 @@ app.get('/api/test/sync-user', isAuthenticated, async (req, res) => {
 });
 
 // Route pour créer une nouvelle conversation
-app.post('/api/conversations', isAuthenticated, async (req, res) => {
+app.post('/api/conversations', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     const { title } = req.body;
@@ -1051,7 +1050,7 @@ app.post('/api/test/generate-stats', isAuthenticated, async (req, res) => {
 });
 
 // Stats du jour
-app.get('/api/user/stats/today', isAuthenticated, async (req, res) => {
+app.get('/api/user/stats/today', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     const [rows] = await mysqlPool.execute(
@@ -1133,7 +1132,7 @@ app.get('/api/user/stats/daily', isAuthenticated, async (req, res) => {
 
 // ===================== ROUTES PREFERENCES UTILISATEUR =====================
 // Récupérer les préférences de l'utilisateur connecté
-app.get('/api/user/preferences', isAuthenticated, async (req, res) => {
+app.get('/api/user/preferences', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     const [rows] = await mysqlPool.execute(
