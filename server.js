@@ -3,6 +3,9 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import dotenv from 'dotenv';
 import session from 'express-session';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const MySQLStore = require('express-mysql-session')(session);
 import { 
   syncUserToMySQL,
   findOrCreateUser,
@@ -23,8 +26,6 @@ import openai from './openai.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Import dynamique de express-mysql-session pour compatibilité ES Modules
-const { default: MySQLStore } = await import('express-mysql-session');
 const sessionStore = new MySQLStore({}, mysqlPool);
 
 dotenv.config();
