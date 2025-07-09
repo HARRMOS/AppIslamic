@@ -22,8 +22,10 @@ import cors from 'cors';
 import openai from './openai.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pkg from 'express-mysql-session';
-const MySQLStore = pkg.default || pkg;
+
+// Import dynamique de express-mysql-session pour compatibilité ES Modules
+const { default: MySQLStore } = await import('express-mysql-session');
+const sessionStore = new MySQLStore({}, mysqlPool);
 
 dotenv.config();
 
@@ -72,8 +74,6 @@ console.log('PORT:', process.env.PORT);
 console.log('========================');
 
 // Configurer le middleware de session
-const sessionStore = new MySQLStore({}, mysqlPool);
-
 app.use(session({
   secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
   resave: false,
