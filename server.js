@@ -1150,16 +1150,6 @@ const __dirname = path.dirname(__filename);
 
 // Servir les fichiers statiques du build React
 
-// Fallback SPA : toutes les autres routes renvoient index.html
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../dist', 'index.html'));
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Serveur backend démarré sur le port ${PORT}`);
-}); 
-
 // ================== ADMIN ENDPOINTS ==================
 // Liste des utilisateurs
 app.get('/admin/users', authenticateJWT, requireAdmin, async (req, res) => {
@@ -1227,4 +1217,14 @@ app.get('/admin/stats', authenticateJWT, requireAdmin, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: 'Erreur SQL stats' });
   }
+}); 
+
+// Fallback SPA : toutes les autres routes renvoient index.html
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../dist', 'index.html'));
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Serveur backend démarré sur le port ${PORT}`);
 }); 
