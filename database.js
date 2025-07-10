@@ -89,20 +89,27 @@ export async function findOrCreateUser(googleId, username, email) {
       await mysqlPool.query('UPDATE users SET chatbotMessagesQuota = 1000 WHERE id = ?', [googleId]);
     }
     [rows] = await mysqlPool.query('SELECT * FROM users WHERE id = ?', [googleId]);
-    return rows[0];
+    const userFinal = rows[0];
+    userFinal.isAdmin = (userFinal.email === 'mohammadharris200528@gmail.com');
+    return userFinal;
   }
   await mysqlPool.query(
     'INSERT INTO users (id, email, username, chatbotMessagesUsed, chatbotMessagesQuota) VALUES (?, ?, ?, 0, 1000)',
     [googleId, email, username]
   );
   [rows] = await mysqlPool.query('SELECT * FROM users WHERE id = ?', [googleId]);
-  return rows[0];
+  const userFinal = rows[0];
+  userFinal.isAdmin = (userFinal.email === 'mohammadharris200528@gmail.com');
+  return userFinal;
 }
 
 export async function findUserById(id) {
   try {
     const [rows] = await mysqlPool.query('SELECT * FROM users WHERE id = ?', [id]);
-    return rows[0] || null;
+    if (!rows[0]) return null;
+    const user = rows[0];
+    user.isAdmin = (user.email === 'mohammadharris200528@gmail.com');
+    return user;
   } catch (err) {
     console.error('Erreur MySQL dans findUserById:', err);
     return null;
