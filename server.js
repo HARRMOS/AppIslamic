@@ -1258,7 +1258,7 @@ app.listen(PORT, () => {
 // Liste des utilisateurs
 app.get('/admin/users', authenticateJWT, requireAdmin, async (req, res) => {
   try {
-    const [rows] = await mysqlPool.query('SELECT id, email, name, quota, is_active FROM users');
+    const [rows] = await mysqlPool.query('SELECT id, email, username, chatbotMessagesUsed, is_active FROM users');
     res.json({ users: rows });
   } catch (e) {
     res.status(500).json({ error: 'Erreur SQL users' });
@@ -1268,7 +1268,7 @@ app.get('/admin/users', authenticateJWT, requireAdmin, async (req, res) => {
 app.post('/admin/users/:userId/reset-quota', authenticateJWT, requireAdmin, async (req, res) => {
   try {
     const DEFAULT_QUOTA = 100; // à adapter selon ta logique
-    await mysqlPool.query('UPDATE users SET quota = ? WHERE id = ?', [DEFAULT_QUOTA, req.params.userId]);
+    await mysqlPool.query('UPDATE users SET chatbotMessagesUsed = ? WHERE id = ?', [DEFAULT_QUOTA, req.params.userId]);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: 'Erreur SQL reset quota' });
