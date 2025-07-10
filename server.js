@@ -75,6 +75,14 @@ function authenticateJWT(req, res, next) {
   });
 }
 
+// Middleware pour vérifier l'admin
+function requireAdmin(req, res, next) {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(403).json({ message: 'Accès réservé à l’admin' });
+  }
+  next();
+}
+
 const allowedOrigins = [
   'https://www.quran-pro.harrmos.com',
   'https://quran-pro.harrmos.com',
@@ -1244,4 +1252,73 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Serveur backend démarré sur le port ${PORT}`);
+}); 
+
+// ================== ADMIN ENDPOINTS ==================
+// Liste des utilisateurs
+app.get('/admin/users', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.query('SELECT id, email, name, quota, is_active FROM users');
+    res.json({ users: rows });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur SQL users' });
+  }
+});
+// Reset quota utilisateur
+app.post('/admin/users/:userId/reset-quota', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const DEFAULT_QUOTA = 100; // à adapter selon ta logique
+    await mysqlPool.query('UPDATE users SET quota = ? WHERE id = ?', [DEFAULT_QUOTA, req.params.userId]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur SQL reset quota' });
+  }
+});
+// Voir achats d'un utilisateur
+app.get('/admin/users/:userId/purchases', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.query('SELECT * FROM purchases WHERE user_id = ?', [req.params.userId]);
+    res.json({ purchases: rows });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur SQL purchases user' });
+  }
+});
+// Liste des achats
+app.get('/admin/purchases', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.query('SELECT * FROM purchases');
+    res.json({ purchases: rows });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur SQL purchases' });
+  }
+});
+// Liste des bots
+app.get('/admin/bots', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.query('SELECT id, name, is_active, (SELECT COUNT(*) FROM user_bots WHERE bot_id = bots.id) AS usersCount FROM bots');
+    res.json({ bots: rows });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur SQL bots' });
+  }
+});
+// Activer/désactiver un bot
+app.post('/admin/bots/:botId/toggle', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    await mysqlPool.query('UPDATE bots SET is_active = NOT is_active WHERE id = ?', [req.params.botId]);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur SQL toggle bot' });
+  }
+});
+// Statistiques globales
+app.get('/admin/stats', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const [[{ users }]] = await mysqlPool.query('SELECT COUNT(*) AS users FROM users');
+    const [[{ bots }]] = await mysqlPool.query('SELECT COUNT(*) AS bots FROM bots');
+    const [[{ purchases }]] = await mysqlPool.query('SELECT COUNT(*) AS purchases FROM purchases');
+    const [[{ hasanat }]] = await mysqlPool.query('SELECT SUM(hasanat) AS hasanat FROM stats');
+    res.json({ users, bots, purchases, hasanat: hasanat || 0 });
+  } catch (e) {
+    res.status(500).json({ error: 'Erreur SQL stats' });
+  }
 }); 
