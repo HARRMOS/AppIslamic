@@ -1,11 +1,7 @@
 import express from 'express';
-import passport from 'passport';
-import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import dotenv from 'dotenv';
-import session from 'express-session';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const MySQLStore = require('express-mysql-session')(session);
 import { 
   syncUserToMySQL,
   findOrCreateUser,
@@ -213,43 +209,17 @@ app.get('/auth/status', authenticateJWT, async (req, res) => {
 });
 
 // Route pour initier l'authentification Google
-app.get('/auth/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
-);
+app.get('/auth/google', (req, res) => {
+  res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
+});
 // Route de callback après l'authentification Google
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5174';
-app.get('/auth/google/callback',
-  passport.authenticate('google', { failureRedirect: '/login' }),
-  (req, res) => {
-    // L'utilisateur est dans req.user (grâce à Passport)
-    const user = req.user;
-    // Générer le JWT (valable 7 jours par exemple)
-    const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
-    const token = jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-        prenom: user.prenom
-      },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-    // Rediriger vers le frontend avec le token dans l’URL
-    res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
-  }
-);
+app.get('/auth/google/callback', (req, res) => {
+  res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
+});
 
 // Route de déconnexion
-app.get('/logout', (req, res, next) => {
-  console.log('Received logout request');
-  req.logout((err) => {
-    if (err) {
-      console.error('Erreur lors de la déconnexion:', err);
-      return next(err);
-    }
-    // Au lieu de rediriger, envoyer une réponse JSON pour le frontend
-    res.status(200).json({ message: 'Déconnexion réussie' });
-  });
+app.get('/logout', (req, res) => {
+  res.status(200).json({ message: 'Déconnexion réussie (stateless JWT)' });
 });
 
 // ===================== ROUTES UTILISATEURS =====================
@@ -543,10 +513,10 @@ app.put('/api/goals/:goalId', authenticateJWT, async (req, res) => {
   }
 });
 
-// Nouvelle route pour récupérer tous les bots
-app.get('/api/bots', (req, res) => {
+// Correction de la route GET /api/bots si getBots est async
+app.get('/api/bots', async (req, res) => {
   try {
-    const bots = getBots();
+    const bots = await getBots();
     res.status(200).json(bots);
   } catch (error) {
     console.error('Erreur lors de la récupération des bots:', error);
@@ -601,14 +571,11 @@ app.get('/api/bots', (req, res) => {
    }
 });
 // Route pour créer un nouveau bot (admin uniquement)
-app.post('/api/bots', authenticateJWT, async (req, res) => {
-  if (req.user.email !== 'mohammadharris200528@gmail.com') { // Vérifier si l'utilisateur est admin
-    return res.status(403).json({ message: 'Accès refusé. Réservé à l\'administrateur.' });
-  }
+app.post('/api/bots', authenticateJWT, requireAdmin, async (req, res) => {
   const { name, description, price, category, image, prompt } = req.body;
   
   try {
-    const botId = addBot(name, description, price, category, image, prompt);
+    const botId = await addBot(name, description, price, category, image, prompt);
     res.status(201).json({ message: 'Bot créé avec succès', botId });
   } catch (error) {
     console.error('Erreur lors de la création du bot:', error);
@@ -616,18 +583,12 @@ app.post('/api/bots', authenticateJWT, async (req, res) => {
   }
 });
 
-// Route pour mettre à jour un bot
-app.put('/api/bots/:id', (req, res) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: 'Non authentifié' });
-  }
-  const botId = Number(req.params.id); // Convertir l'ID en nombre
-  console.log('PUT /api/bots/:id - Received ID:', botId); // Log the received ID
+// Correction de la route PUT /api/bots/:id pour requireAdmin
+app.put('/api/bots/:id', authenticateJWT, requireAdmin, async (req, res) => {
+  const botId = Number(req.params.id);
   const { name, description, price, category, image, prompt } = req.body;
-  console.log('PUT /api/bots/:id - Received body:', req.body); // Log the received body
-  
   try {
-    updateBot(botId, name, description, price, category, image, prompt);
+    await updateBot(botId, name, description, price, category, image, prompt);
     res.status(200).json({ message: 'Bot mis à jour avec succès' });
   } catch (error) {
     console.error('Erreur lors de la mise à jour du bot:', error);
@@ -635,15 +596,12 @@ app.put('/api/bots/:id', (req, res) => {
   }
 });
 
-// Route pour supprimer un bot (admin uniquement)
-app.delete('/api/bots/:id', authenticateJWT, async (req, res) => {
-  if (req.user.email !== 'mohammadharris200528@gmail.com') {
-    return res.status(403).json({ message: 'Accès refusé. Réservé à l\'administrateur.' });
-  }
+// Correction de la route DELETE /api/bots/:id pour requireAdmin
+app.delete('/api/bots/:id', authenticateJWT, requireAdmin, async (req, res) => {
   const botId = req.params.id;
   
   try {
-    deleteBot(botId);
+    await deleteBot(botId);
     res.status(200).json({ message: 'Bot supprimé avec succès' });
   } catch (error) {
     console.error('Erreur lors de la suppression du bot:', error);
@@ -848,10 +806,12 @@ app.post('/api/generate-keys', authenticateJWT, async (req, res) => {
   }
 });
 
+// Harmonisation des préférences utilisateur :
+// Supprimer PUT /api/users/:userId/preferences (doublon)
 // Nouvelle route pour sauvegarder les préférences utilisateur par bot
-app.post('/api/bot-preferences', authenticateJWT, (req, res) => {
+app.post('/api/bot-preferences', authenticateJWT, async (req, res) => {
   const userId = req.user.id;
-  const botId = 1; // On force le bot islamique
+  const botId = Number(req.query.botId) || 1; // On force le bot islamique
   const { preferences } = req.body;
 
   if (!preferences) {
@@ -859,7 +819,7 @@ app.post('/api/bot-preferences', authenticateJWT, (req, res) => {
   }
 
   try {
-    saveUserBotPreferences(userId, botId, preferences);
+    await saveUserBotPreferences(userId, botId, preferences);
     res.status(200).json({ message: 'Préférences sauvegardées avec succès.' });
   } catch (error) {
     console.error('Erreur lors de la sauvegarde des préférences:', error);
@@ -868,13 +828,13 @@ app.post('/api/bot-preferences', authenticateJWT, (req, res) => {
 });
 
 // Modifier la route pour récupérer les conversations afin d'inclure les préférences
-app.get('/api/conversations/:botId', authenticateJWT, (req, res) => {
+app.get('/api/conversations/:botId', authenticateJWT, async (req, res) => {
   const userId = req.user.id;
-  const botId = 1; // On force le bot islamique
+  const botId = Number(req.params.botId) || 1; // On force le bot islamique
 
   try {
-    const conversations = getConversationsForUserBot(userId, botId);
-    const preferences = getUserBotPreferences(userId, botId);
+    const conversations = await getConversationsForUserBot(userId, botId);
+    const preferences = await getUserBotPreferences(userId, botId);
     
     res.status(200).json({ conversations, preferences });
   } catch (error) {
@@ -888,7 +848,7 @@ app.delete('/api/conversations/:botId/:conversationId', authenticateJWT, async (
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
-    const botId = 1; // On force le bot islamique
+    const botId = Number(req.params.botId) || 1; // On force le bot islamique
 
     const success = await deleteConversationMySQL(userId, botId, conversationId);
     if (success) {
@@ -935,7 +895,7 @@ app.put('/api/conversations/:botId/:conversationId/title', authenticateJWT, asyn
 // Route pour rechercher des messages dans une conversation spécifique
 app.get('/api/messages/:botId/:conversationId/search', authenticateJWT, async (req, res) => {
   const userId = req.user.id;
-  const botId = 1; // On force le bot islamique
+  const botId = Number(req.params.botId) || 1; // On force le bot islamique
   const conversationId = parseInt(req.params.conversationId);
   const query = req.query.query;
 
@@ -1316,7 +1276,7 @@ app.get('/admin/stats', authenticateJWT, requireAdmin, async (req, res) => {
     const [[{ users }]] = await mysqlPool.query('SELECT COUNT(*) AS users FROM users');
     const [[{ bots }]] = await mysqlPool.query('SELECT COUNT(*) AS bots FROM bots');
     const [[{ purchases }]] = await mysqlPool.query('SELECT COUNT(*) AS purchases FROM purchases');
-    const [[{ hasanat }]] = await mysqlPool.query('SELECT SUM(hasanat) AS hasanat FROM stats');
+    const [[{ hasanat }]] = await mysqlPool.query('SELECT SUM(hasanat) AS hasanat FROM quran_stats');
     res.json({ users, bots, purchases, hasanat: hasanat || 0 });
   } catch (e) {
     res.status(500).json({ error: 'Erreur SQL stats' });
