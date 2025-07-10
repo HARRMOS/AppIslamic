@@ -23,7 +23,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 
-const sessionStore = new MySQLStore({}, mysqlPool);
 
 dotenv.config();
 
@@ -110,74 +109,21 @@ console.log('RENDER:', process.env.RENDER);
 console.log('PORT:', process.env.PORT);
 console.log('========================');
 
-// Configurer le middleware de session
-app.use(session({
 
-  secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
-  resave: false,
-  saveUninitialized: false,
-  store: sessionStore, // <-- Ajout du store MySQL
-  cookie: {
-    secure: true,
-    sameSite: 'None',
-    maxAge: 24 * 60 * 60 * 1000 // 24 heures
-  }
-}));
+// Configurer le middleware de session
+
 
 // Ajout de logs pour la configuration de session
-console.log('Configuration de session:', {
-  secret: process.env.SESSION_SECRET || 'supersecretpar défaut',
-  secure: true,
-  sameSite: 'None',
-  maxAge: 24 * 60 * 60 * 1000
-});
+
 
 // Configure Google OAuth strategy
-passport.use(new GoogleStrategy({
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL 
-  },
-  async (accessToken, refreshToken, profile, done) => {
-    try {
-      const user = await findOrCreateUser(profile.id, profile.displayName, profile.emails[0].value);
-      if (!user) {
-        // Si la synchro MySQL a échoué, refuser la connexion
-        return done(null, false);
-      }
-      done(null, user);
-    } catch (err) {
-      console.error('Erreur dans la stratégie Google:', err);
-      done(err);
-    }
-  }
-));
+
 
 // Initialiser Passport et la gestion de session
-app.use(passport.initialize());
-app.use(passport.session());
+
 
 // Sérialisation et désérialisation de l'utilisateur (déplacées depuis database.js)
-passport.serializeUser((user, done) => {
-  console.log('Passport: server.js - serializeUser - User ID:', user.id);
-  done(null, user.id);
-});
 
-passport.deserializeUser(async (id, done) => {
-  try {
-    const user = await findUserById(id);
-    if (user) {
-      console.log('Passport: server.js - deserializeUser - User found, calling done(null, user)');
-      done(null, user);
-    } else {
-      console.log('Passport: server.js - deserializeUser - User not found for ID', id, ', calling done(null, false)');
-      done(null, false);
-    }
-  } catch (err) {
-    console.error('Passport: server.js - deserializeUser - Error during deserialization:', err);
-    done(err);
-  }
-});
 
 // Initialiser la base de données au démarrage du serveur
 
