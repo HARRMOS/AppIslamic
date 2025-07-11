@@ -15,7 +15,9 @@ import {
   getConversationsForUserBot, // Ajouté
   getBotById,
   getMessagesForUserBot, // Ajouté
-  getUserBotPreferences // Ajouté
+  getUserBotPreferences, // Ajouté
+  saveQuizResult,
+  getQuizResultsForUser
 } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';
@@ -501,6 +503,17 @@ app.get('/api/bots', async (req, res) => {
 //     res.status(500).json({ error: 'Erreur lors de la mise à jour des stats' });
 //   }
 // });
+
+// ===================== ROUTES QUIZ =====================
+app.get('/api/quiz/history', authenticateJWT, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const results = await getQuizResultsForUser(userId);
+    res.json({ success: true, history: results });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la récupération de l’historique', details: error.message });
+  }
+});
 
 //Route pour les stats du jour
  app.get('/api/stats/:userId/today', async (req, res) => {
@@ -1163,7 +1176,7 @@ app.get('/admin/users', authenticateJWT, requireAdmin, async (req, res) => {
 // Reset quota utilisateur
 app.post('/admin/users/:userId/reset-quota', authenticateJWT, requireAdmin, async (req, res) => {
   try {
-    const DEFAULT_QUOTA = 100; // à adapter selon ta logique
+    const DEFAULT_QUOTA = 0; // Remettre à zéro
     await mysqlPool.query('UPDATE users SET chatbotMessagesUsed = ? WHERE id = ?', [DEFAULT_QUOTA, req.params.userId]);
     res.json({ success: true });
   } catch (e) {
