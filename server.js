@@ -157,13 +157,13 @@ app.get('/auth/status', authenticateJWT, async (req, res) => {
 });
 
 // Route pour initier l'authentification Google
-app.get('/auth/google', (req, res) => {
-  res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
-});
+// app.get('/auth/google', (req, res) => {
+//   res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
+// });
 // Route de callback après l'authentification Google
-app.get('/auth/google/callback', (req, res) => {
-  res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
-});
+// app.get('/auth/google/callback', (req, res) => {
+//   res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
+// });
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
