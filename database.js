@@ -90,7 +90,8 @@ export async function findOrCreateUser(googleId, username, email) {
     }
     [rows] = await mysqlPool.query('SELECT * FROM users WHERE id = ?', [googleId]);
     const userFinal = rows[0];
-    userFinal.isAdmin = (userFinal.email === 'mohammadharris200528@gmail.com');
+    // On utilise la colonne isAdmin de la base
+    userFinal.isAdmin = !!userFinal.isAdmin;
     return userFinal;
   }
   await mysqlPool.query(

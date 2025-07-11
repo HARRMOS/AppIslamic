@@ -1284,3 +1284,37 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Serveur backend démarré sur le port ${PORT}`);
 }); 
+
+// Route temporaire pour générer un JWT admin (à supprimer après usage)
+app.get('/admin/generate-token', (req, res) => {
+  const { secret } = req.query;
+  // Change la valeur ci-dessous pour plus de sécurité
+  if (secret !== 'GEN_TOKEN_2025') {
+    return res.status(403).json({ error: 'Accès refusé' });
+  }
+  const payload = {
+    id: 'admin-id', // Remplace par l'id réel si besoin
+    email: 'mohammadharris200528@gmail.com'
+  };
+  const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+  res.json({ token });
+}); 
+
+// Route permanente pour login admin sécurisé
+app.post('/admin/login', async (req, res) => {
+  const { email, password } = req.body;
+  if (
+    email === 'mohammadharris200528@gmail.com' &&
+    password === process.env.ADMIN_PASSWORD
+  ) {
+    const payload = {
+      id: 'admin-id', // Mets l'id réel si tu veux
+      email
+    };
+    const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+    return res.json({ token });
+  }
+  return res.status(403).json({ error: 'Identifiants invalides' });
+}); 
