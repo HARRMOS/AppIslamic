@@ -206,7 +206,27 @@ export async function getUserBotPreferences(userId, botId) {
   return rows[0] || null;
 }
 
+// Enregistrer un résultat de quiz
+export async function saveQuizResult(userId, theme, level, score, total, details = null) {
+  const date = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  await mysqlPool.query(
+    'INSERT INTO quiz_results (user_id, theme, level, score, total, date, details) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [userId, theme, level, score, total, date, details ? JSON.stringify(details) : null]
+  );
+}
+
+// Récupérer l’historique des quiz d’un utilisateur
+export async function getQuizResultsForUser(userId) {
+  const [rows] = await mysqlPool.query(
+    'SELECT * FROM quiz_results WHERE user_id = ? ORDER BY date DESC',
+    [userId]
+  );
+  return rows;
+}
+
 export { 
   mysqlPool,
-  syncUserToMySQL
+  syncUserToMySQL,
+  getQuizResultsForUser,
+  saveQuizResult
 }; 

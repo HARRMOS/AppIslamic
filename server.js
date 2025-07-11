@@ -514,7 +514,19 @@ app.get('/api/quiz/history', authenticateJWT, async (req, res) => {
     res.status(500).json({ error: 'Erreur lors de la récupération de l’historique', details: error.message });
   }
 });
-
+app.post('/api/quiz/result', authenticateJWT, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { theme, level, score, total, details } = req.body;
+    if (!theme || !level || score === undefined || total === undefined) {
+      return res.status(400).json({ error: 'Paramètres manquants' });
+    }
+    await saveQuizResult(userId, theme, level, score, total, details);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de l’enregistrement du résultat', details: error.message });
+  }
+});
 //Route pour les stats du jour
  app.get('/api/stats/:userId/today', async (req, res) => {
    try {
