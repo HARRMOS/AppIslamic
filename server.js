@@ -192,7 +192,7 @@ app.get('/auth/google/callback',
       { expiresIn: '7d' }
     );
     // Rediriger vers le frontend avec le token en query (à adapter selon ton frontend)
-    res.redirect(`https://appislamic.onrender.com/auth/callback?token=${token}`);
+    res.redirect(`https://https://www.quran-pro.harrmos.com/auth/callback?token=${token}`);
   }
 );
 
