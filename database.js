@@ -226,6 +226,6 @@ export async function getQuizResultsForUser(userId) {
 
 export { 
   mysqlPool,
-  syncUserToMySQL,
-  getQuizResultsForUser
+  syncUserToMySQL
+  
 }; 
