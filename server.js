@@ -24,6 +24,8 @@ import openai from './openai.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
+import passport from 'passport';
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 
 
 dotenv.config();
@@ -120,6 +122,25 @@ console.log('========================');
 
 // Configure Google OAuth strategy
 
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+
+passport.use(new GoogleStrategy({
+  clientID: GOOGLE_CLIENT_ID,
+  clientSecret: GOOGLE_CLIENT_SECRET,
+  callbackURL: 'https://appislamic.onrender.com/auth/google/callback',
+}, async (accessToken, refreshToken, profile, done) => {
+  try {
+    // On crée ou récupère l'utilisateur dans la base
+    const user = await findOrCreateUser(profile.id, profile.displayName, profile.emails[0].value);
+    return done(null, user);
+  } catch (err) {
+    return done(err, null);
+  }
+}));
+
+app.use(passport.initialize());
 
 // Initialiser Passport et la gestion de session
 
@@ -157,13 +178,23 @@ app.get('/auth/status', authenticateJWT, async (req, res) => {
 });
 
 // Route pour initier l'authentification Google
-app.get('/auth/google', (req, res) => {
-  res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
-});
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
 // Route de callback après l'authentification Google
-app.get('/auth/google/callback', (req, res) => {
-  res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
-});
+app.get('/auth/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  (req, res) => {
+    // Générer un JWT pour l'utilisateur connecté
+    const token = jwt.sign(
+      { id: req.user.id, email: req.user.email },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    // Rediriger vers le frontend avec le token en query (à adapter selon ton frontend)
+    res.redirect(`https://appislamic.onrender.com/auth/callback?token=${token}`);
+  }
+);
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
