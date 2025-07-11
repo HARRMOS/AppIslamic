@@ -24,6 +24,9 @@ import openai from './openai.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
+import passport from 'passport';
+import session from 'express-session';
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 
 
 dotenv.config();
@@ -112,58 +115,70 @@ console.log('PORT:', process.env.PORT);
 console.log('========================');
 
 
-// Configurer le middleware de session
-
-
-// Ajout de logs pour la configuration de session
-
-
-// Configure Google OAuth strategy
-
+// Configurer le middleware de session (obligatoire pour Passport)
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'une_autre_cle_ultra_secrete',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
+  }
+}));
 
 // Initialiser Passport et la gestion de session
+app.use(passport.initialize());
+app.use(passport.session());
 
+// Configure Google OAuth strategy
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: process.env.GOOGLE_CALLBACK_URL || '/auth/google/callback',
+}, async (accessToken, refreshToken, profile, done) => {
+  try {
+    // On synchronise/crée l'utilisateur dans la base
+    const user = await findOrCreateUser(profile.id, profile.displayName, profile.emails[0].value);
+    return done(null, user);
+  } catch (err) {
+    return done(err, null);
+  }
+}));
 
-// Sérialisation et désérialisation de l'utilisateur (déplacées depuis database.js)
-
-
-// Initialiser la base de données au démarrage du serveur
-
-// Fonction utilitaire pour ajouter un message dans MySQL
-async function addMessageMySQL(userId, botId, conversationId, sender, text, context = null) {
-  await mysqlPool.query(
-    'INSERT INTO messages (userId, botId, conversationId, sender, text, context) VALUES (?, ?, ?, ?, ?, ?)',
-    [userId, botId, conversationId, sender, text, context]
-  );
-}
-
-// Désactive le cache pour la route /auth/status (important pour Safari/cookies)
-app.use('/auth/status', (req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
-  res.set('Surrogate-Control', 'no-store');
-  next();
+passport.serializeUser((user, done) => {
+  done(null, user.id);
 });
-// Route pour vérifier l'état de l'authentification (pour le frontend)
-app.get('/auth/status', authenticateJWT, async (req, res) => {
-  const responseUser = {
-    id: req.user.id,
-    name: req.user.name || req.user.username,
-    email: req.user.email,
-    mysql_id: req.user.mysql_id
-  };
-  res.status(200).json({ user: responseUser });
+passport.deserializeUser(async (id, done) => {
+  try {
+    const user = await findUserById(id);
+    done(null, user);
+  } catch (err) {
+    done(err, null);
+  }
 });
 
 // Route pour initier l'authentification Google
-// app.get('/auth/google', (req, res) => {
-//   res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
-// });
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
 // Route de callback après l'authentification Google
-// app.get('/auth/google/callback', (req, res) => {
-//   res.status(501).json({ message: 'OAuth Google désactivé (authentification JWT uniquement)' });
-// });
+app.get('/auth/google/callback', passport.authenticate('google', { failureRedirect: '/login', session: false }), async (req, res) => {
+  // Générer un JWT pour l'utilisateur connecté
+  const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+  const token = jwt.sign({ id: req.user.id, email: req.user.email }, JWT_SECRET, { expiresIn: '7d' });
+  // Option 1 : renvoyer le token dans un cookie sécurisé
+  res.cookie('token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+  // Option 2 : ou rediriger avec le token dans l'URL (à adapter côté frontend)
+  // res.redirect(`/auth/success?token=${token}`);
+  // Par défaut, on redirige vers la page d'accueil
+  res.redirect('/');
+});
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
