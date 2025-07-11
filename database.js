@@ -213,7 +213,6 @@ export async function saveQuizResult(userId, theme, level, score, total, details
     'INSERT INTO quiz_results (user_id, theme, level, score, total, date, details) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [userId, theme, level, score, total, date, details ? JSON.stringify(details) : null]
   );
-  return rows;
 }
 
 // Récupérer l’historique des quiz d’un utilisateur
@@ -228,6 +227,5 @@ export async function getQuizResultsForUser(userId) {
 export { 
   mysqlPool,
   syncUserToMySQL,
-  getQuizResultsForUser,
-  saveQuizResult
+  getQuizResultsForUser
 }; 
