@@ -535,6 +535,70 @@ app.get('/api/bots', async (req, res) => {
 //   }
 // });
 
+// ===================== ROUTES QUIZZES =====================
+// Liste tous les quiz
+app.get('/api/quizzes', authenticateJWT, async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.execute('SELECT * FROM quizzes ORDER BY created_at DESC');
+    res.json({ success: true, quizzes: rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la récupération des quiz', details: error.message });
+  }
+});
+// Détail d'un quiz
+app.get('/api/quizzes/:id', authenticateJWT, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [rows] = await mysqlPool.execute('SELECT * FROM quizzes WHERE id = ?', [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Quiz non trouvé' });
+    res.json({ success: true, quiz: rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la récupération du quiz', details: error.message });
+  }
+});
+// Création d'un quiz (admin)
+app.post('/api/quizzes', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { theme, difficulty, title, description, questions } = req.body;
+    if (!theme || !difficulty || !title || !questions) {
+      return res.status(400).json({ error: 'Paramètres manquants' });
+    }
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO quizzes (theme, difficulty, title, description, questions) VALUES (?, ?, ?, ?, ?)',
+      [theme, difficulty, title, description || '', JSON.stringify(questions)]
+    );
+    res.status(201).json({ success: true, quizId: result.insertId });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la création du quiz', details: error.message });
+  }
+});
+// Edition d'un quiz (admin)
+app.put('/api/quizzes/:id', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { theme, difficulty, title, description, questions } = req.body;
+    const [result] = await mysqlPool.execute(
+      'UPDATE quizzes SET theme=?, difficulty=?, title=?, description=?, questions=?, updated_at=NOW() WHERE id=?',
+      [theme, difficulty, title, description || '', JSON.stringify(questions), id]
+    );
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Quiz non trouvé' });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la modification du quiz', details: error.message });
+  }
+});
+// Suppression d'un quiz (admin)
+app.delete('/api/quizzes/:id', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [result] = await mysqlPool.execute('DELETE FROM quizzes WHERE id = ?', [id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Quiz non trouvé' });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la suppression du quiz', details: error.message });
+  }
+}); 
+
 // ===================== ROUTES QUIZ =====================
 app.get('/api/quiz/history', authenticateJWT, async (req, res) => {
   try {
@@ -1317,68 +1381,4 @@ app.post('/admin/login', async (req, res) => {
     return res.json({ token });
   }
   return res.status(403).json({ error: 'Identifiants invalides' });
-}); 
-
-// ===================== ROUTES QUIZZES =====================
-// Liste tous les quiz
-app.get('/api/quizzes', authenticateJWT, async (req, res) => {
-  try {
-    const [rows] = await mysqlPool.execute('SELECT * FROM quizzes ORDER BY created_at DESC');
-    res.json({ success: true, quizzes: rows });
-  } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de la récupération des quiz', details: error.message });
-  }
-});
-// Détail d'un quiz
-app.get('/api/quizzes/:id', authenticateJWT, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const [rows] = await mysqlPool.execute('SELECT * FROM quizzes WHERE id = ?', [id]);
-    if (!rows.length) return res.status(404).json({ error: 'Quiz non trouvé' });
-    res.json({ success: true, quiz: rows[0] });
-  } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de la récupération du quiz', details: error.message });
-  }
-});
-// Création d'un quiz (admin)
-app.post('/api/quizzes', authenticateJWT, requireAdmin, async (req, res) => {
-  try {
-    const { theme, difficulty, title, description, questions } = req.body;
-    if (!theme || !difficulty || !title || !questions) {
-      return res.status(400).json({ error: 'Paramètres manquants' });
-    }
-    const [result] = await mysqlPool.execute(
-      'INSERT INTO quizzes (theme, difficulty, title, description, questions) VALUES (?, ?, ?, ?, ?)',
-      [theme, difficulty, title, description || '', JSON.stringify(questions)]
-    );
-    res.status(201).json({ success: true, quizId: result.insertId });
-  } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de la création du quiz', details: error.message });
-  }
-});
-// Edition d'un quiz (admin)
-app.put('/api/quizzes/:id', authenticateJWT, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { theme, difficulty, title, description, questions } = req.body;
-    const [result] = await mysqlPool.execute(
-      'UPDATE quizzes SET theme=?, difficulty=?, title=?, description=?, questions=?, updated_at=NOW() WHERE id=?',
-      [theme, difficulty, title, description || '', JSON.stringify(questions), id]
-    );
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Quiz non trouvé' });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de la modification du quiz', details: error.message });
-  }
-});
-// Suppression d'un quiz (admin)
-app.delete('/api/quizzes/:id', authenticateJWT, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const [result] = await mysqlPool.execute('DELETE FROM quizzes WHERE id = ?', [id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Quiz non trouvé' });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de la suppression du quiz', details: error.message });
-  }
 }); 
