@@ -535,6 +535,47 @@ app.get('/api/bots', async (req, res) => {
 //   }
 // });
 
+
+// ===================== CRUD DUA =====================
+
+// Récupérer toutes les duas
+app.get('/api/duas', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.execute('SELECT * FROM duas ORDER BY created_at DESC');
+    res.json({ duas: rows });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la récupération des duas.' });
+  }
+});
+
+// Ajouter une dua
+app.post('/api/duas', authenticateJWT, requireAdmin, async (req, res) => {
+  const { title, arabic, translit, translation, category, audio } = req.body;
+  if (!title || !arabic || !translation) {
+    return res.status(400).json({ message: 'Champs obligatoires manquants.' });
+  }
+  try {
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO duas (title, arabic, translit, translation, category, audio) VALUES (?, ?, ?, ?, ?, ?)',
+      [title, arabic, translit || '', translation, category || 'other', audio || '']
+    );
+    res.status(201).json({ success: true, id: result.insertId });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de l’ajout de la dua.' });
+  }
+});
+
+// Supprimer une dua
+app.delete('/api/duas/:id', authenticateJWT, requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await mysqlPool.execute('DELETE FROM duas WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ message: 'Erreur lors de la suppression.' });
+  }
+});
+
 // ===================== ROUTES QUIZZES =====================
 // Liste tous les quiz
 app.get('/api/quizzes', authenticateJWT, async (req, res) => {
