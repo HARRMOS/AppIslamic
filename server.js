@@ -84,8 +84,11 @@ function requireAdmin(req, res, next) {
 
 const allowedOrigins = [
   'https://www.quran-pro.harrmos.com',
+  'https://www.ummati.pro',
   'https://quran-pro.harrmos.com',
+  'https://ummati.pro',
   'https://appislamic.onrender.com',
+  
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
 
@@ -192,7 +195,7 @@ app.get('/auth/google/callback',
       { expiresIn: '7d' }
     );
     // Rediriger vers le frontend avec le token en query (à adapter selon ton frontend)
-    res.redirect(`https://www.quran-pro.harrmos.com/auth/callback?token=${token}`);
+    res.redirect(`https://www.ummati.pro/auth/callback?token=${token}`);
   }
 );
 
