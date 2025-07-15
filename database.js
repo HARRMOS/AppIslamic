@@ -225,6 +225,19 @@ export async function getQuizResultsForUser(userId) {
   return rows;
 }
 
+export async function setMaintenance(enabled, id = '', pwd = '') {
+  await mysqlPool.query(
+    'UPDATE maintenance SET enabled = ?, admin_id = ?, admin_pwd = ? WHERE id = 1',
+    [!!enabled, id, pwd]
+  );
+}
+
+export async function getMaintenance() {
+  const [rows] = await mysqlPool.query('SELECT enabled, admin_id, admin_pwd FROM maintenance WHERE id = 1');
+  if (!rows[0]) return { enabled: false, id: '', pwd: '' };
+  return { enabled: !!rows[0].enabled, id: rows[0].admin_id || '', pwd: rows[0].admin_pwd || '' };
+}
+
 export { 
   mysqlPool,
   syncUserToMySQL

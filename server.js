@@ -17,7 +17,9 @@ import {
   getMessagesForUserBot, // Ajouté
   getUserBotPreferences, // Ajouté
   saveQuizResult,
-  getQuizResultsForUser
+  getQuizResultsForUser,
+  setMaintenance,
+  getMaintenance
 } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';
@@ -1428,29 +1430,24 @@ app.post('/admin/login', async (req, res) => {
   return res.status(403).json({ error: 'Identifiants invalides' });
 }); 
 
-// Fichier de stockage de l'état maintenance (toujours accessible sur Render)
-const maintenanceFile = path.join('/tmp', 'maintenance.json');
-
 // Route pour activer/désactiver la maintenance (admin uniquement)
-app.post('/api/maintenance', authenticateJWT, requireAdmin, (req, res) => {
+app.post('/api/maintenance', authenticateJWT, requireAdmin, async (req, res) => {
   const { enabled, id, pwd } = req.body;
-  const data = { enabled: !!enabled, id: id || '', pwd: pwd || '' };
   try {
-    fs.writeFileSync(maintenanceFile, JSON.stringify(data, null, 2));
-    res.json({ success: true, maintenance: data });
+    await setMaintenance(enabled, id, pwd);
+    res.json({ success: true, maintenance: { enabled, id, pwd } });
   } catch (e) {
-    console.error('Erreur écriture maintenance.json:', e);
+    console.error('Erreur SQL maintenance:', e);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
 // Route pour lire l'état maintenance
-app.get('/api/maintenance-status', (req, res) => {
-  let data = { enabled: false, id: '', pwd: '' };
-  if (fs.existsSync(maintenanceFile)) {
-    try {
-      data = JSON.parse(fs.readFileSync(maintenanceFile, 'utf-8'));
-    } catch {}
+app.get('/api/maintenance-status', async (req, res) => {
+  try {
+    const data = await getMaintenance();
+    res.json(data);
+  } catch (e) {
+    res.json({ enabled: false, id: '', pwd: '' });
   }
-  res.json(data);
 }); 
