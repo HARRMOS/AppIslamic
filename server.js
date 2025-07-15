@@ -1428,15 +1428,20 @@ app.post('/admin/login', async (req, res) => {
   return res.status(403).json({ error: 'Identifiants invalides' });
 }); 
 
-// Fichier de stockage de l'état maintenance
-const maintenanceFile = path.join(process.cwd(), 'backend', 'maintenance.json');
+// Fichier de stockage de l'état maintenance (toujours accessible sur Render)
+const maintenanceFile = path.join('/tmp', 'maintenance.json');
 
 // Route pour activer/désactiver la maintenance (admin uniquement)
 app.post('/api/maintenance', authenticateJWT, requireAdmin, (req, res) => {
   const { enabled, id, pwd } = req.body;
   const data = { enabled: !!enabled, id: id || '', pwd: pwd || '' };
-  fs.writeFileSync(maintenanceFile, JSON.stringify(data, null, 2));
-  res.json({ success: true, maintenance: data });
+  try {
+    fs.writeFileSync(maintenanceFile, JSON.stringify(data, null, 2));
+    res.json({ success: true, maintenance: data });
+  } catch (e) {
+    console.error('Erreur écriture maintenance.json:', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
 // Route pour lire l'état maintenance
