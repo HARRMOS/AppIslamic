@@ -581,6 +581,27 @@ app.delete('/api/duas/:id', authenticateJWT, requireAdmin, async (req, res) => {
     res.status(500).json({ message: 'Erreur lors de la suppression.' });
   }
 });
+// Route pour activer/désactiver la maintenance (admin uniquement)
+app.post('/api/maintenance', authenticateJWT, requireAdmin, async (req, res) => {
+  const { enabled, id, pwd } = req.body;
+  try {
+    await setMaintenance(enabled, id, pwd);
+    res.json({ success: true, maintenance: { enabled, id, pwd } });
+  } catch (e) {
+    console.error('Erreur SQL maintenance:', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+// Route pour lire l'état maintenance
+app.get('/api/maintenance-status', async (req, res) => {
+  try {
+    const data = await getMaintenance();
+    res.json(data);
+  } catch (e) {
+    res.json({ enabled: false, id: '', pwd: '' });
+  }
+}); 
 
 // ===================== ROUTES QUIZZES =====================
 // Liste tous les quiz
@@ -1430,24 +1451,3 @@ app.post('/admin/login', async (req, res) => {
   return res.status(403).json({ error: 'Identifiants invalides' });
 }); 
 
-// Route pour activer/désactiver la maintenance (admin uniquement)
-app.post('/api/maintenance', authenticateJWT, requireAdmin, async (req, res) => {
-  const { enabled, id, pwd } = req.body;
-  try {
-    await setMaintenance(enabled, id, pwd);
-    res.json({ success: true, maintenance: { enabled, id, pwd } });
-  } catch (e) {
-    console.error('Erreur SQL maintenance:', e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// Route pour lire l'état maintenance
-app.get('/api/maintenance-status', async (req, res) => {
-  try {
-    const data = await getMaintenance();
-    res.json(data);
-  } catch (e) {
-    res.json({ enabled: false, id: '', pwd: '' });
-  }
-}); 
