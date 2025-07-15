@@ -26,6 +26,7 @@ import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import fs from 'fs';
 
 
 dotenv.config();
@@ -1425,4 +1426,26 @@ app.post('/admin/login', async (req, res) => {
     return res.json({ token });
   }
   return res.status(403).json({ error: 'Identifiants invalides' });
+}); 
+
+// Fichier de stockage de l'état maintenance
+const maintenanceFile = path.join(process.cwd(), 'backend', 'maintenance.json');
+
+// Route pour activer/désactiver la maintenance (admin uniquement)
+app.post('/api/maintenance', authenticateJWT, requireAdmin, (req, res) => {
+  const { enabled, id, pwd } = req.body;
+  const data = { enabled: !!enabled, id: id || '', pwd: pwd || '' };
+  fs.writeFileSync(maintenanceFile, JSON.stringify(data, null, 2));
+  res.json({ success: true, maintenance: data });
+});
+
+// Route pour lire l'état maintenance
+app.get('/api/maintenance-status', (req, res) => {
+  let data = { enabled: false, id: '', pwd: '' };
+  if (fs.existsSync(maintenanceFile)) {
+    try {
+      data = JSON.parse(fs.readFileSync(maintenanceFile, 'utf-8'));
+    } catch {}
+  }
+  res.json(data);
 }); 
