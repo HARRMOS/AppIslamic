@@ -1338,6 +1338,10 @@ app.put('/api/user/profile', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     const { username, profile_picture } = req.body;
+    console.log('--- [UPDATE PROFILE] ---');
+    console.log('userId:', userId);
+    console.log('username:', username);
+    console.log('profile_picture:', profile_picture ? '[image]' : null);
     if (!username && !profile_picture) {
       return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour.' });
     }
@@ -1355,12 +1359,14 @@ app.put('/api/user/profile', authenticateJWT, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour.' });
     }
     values.push(userId);
-    await mysqlPool.execute(
+    const [result] = await mysqlPool.execute(
       `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
       values
     );
+    console.log('Résultat SQL:', result);
     res.json({ success: true, message: 'Profil mis à jour.' });
   } catch (error) {
+    console.error('Erreur update profile:', error);
     res.status(500).json({ success: false, message: 'Erreur lors de la mise à jour du profil.', error: error.message });
   }
 });
