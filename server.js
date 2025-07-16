@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
+import bodyParser from 'body-parser';
 import { 
   syncUserToMySQL,
   findOrCreateUser,
@@ -34,6 +35,10 @@ import fs from 'fs';
 dotenv.config();
 
 const app = express();
+
+// Augmente la limite de taille du body parser à 2mb
+app.use(bodyParser.json({ limit: '2mb' }));
+app.use(bodyParser.urlencoded({ limit: '2mb', extended: true }));
 
 // Désactive l'ETag globalement pour éviter les 304 (important pour Safari/cookies)
 app.disable('etag');
