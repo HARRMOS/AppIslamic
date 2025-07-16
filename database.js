@@ -208,11 +208,11 @@ export async function getUserBotPreferences(userId, botId) {
 }
 
 // Enregistrer un résultat de quiz
-export async function saveQuizResult(userId, theme, level, score, total, details = null) {
+export async function saveQuizResult(userId, theme, level, score, total, details = null, quiz_id) {
   const date = new Date().toISOString().slice(0, 19).replace('T', ' ');
   await mysqlPool.query(
-    'INSERT INTO quiz_results (user_id, theme, level, score, total, date, details) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [userId, theme, level, score, total, date, details ? JSON.stringify(details) : null]
+    'INSERT INTO quiz_results (user_id, quiz_id, theme, level, score, total, date, details) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [userId, quiz_id, theme, level, score, total, date, details ? JSON.stringify(details) : null]
   );
 }
 

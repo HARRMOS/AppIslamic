@@ -689,11 +689,11 @@ app.get('/api/quiz/history', authenticateJWT, async (req, res) => {
 app.post('/api/quiz/result', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { theme, level, score, total, details } = req.body;
-    if (!theme || !level || score === undefined || total === undefined) {
+    const { theme, level, score, total, details, quiz_id } = req.body;
+    if (!theme || !level || score === undefined || total === undefined || !quiz_id) {
       return res.status(400).json({ error: 'Paramètres manquants' });
     }
-    await saveQuizResult(userId, theme, level, score, total, details);
+    await saveQuizResult(userId, theme, level, score, total, details, quiz_id);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: 'Erreur lors de l’enregistrement du résultat', details: error.message });
