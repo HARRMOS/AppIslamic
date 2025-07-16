@@ -267,13 +267,15 @@ app.put('/api/users/:userId/preferences', authenticateJWT, async (req, res) => {
   try {
     const userId = req.user.id;
     const { preferences } = req.body;
+    console.log('userId:', userId, typeof userId, 'params:', req.params.userId, typeof req.params.userId);
     if (!preferences) {
       return res.status(400).json({ success: false, message: 'Préférences manquantes' });
     }
-    // Vérifier que l'utilisateur modifie bien ses propres préférences
-    if (userId !== req.params.userId) {
+    // Vérifier que l'utilisateur modifie bien ses propres préférences (comparaison en string)
+    if (String(userId) !== String(req.params.userId)) {
       return res.status(403).json({ success: false, message: 'Accès interdit' });
     }
+    console.log('UPDATE preferences for user', userId, preferences);
     await mysqlPool.execute(
       'UPDATE users SET preferences = ? WHERE id = ?',
       [JSON.stringify(preferences), userId]
