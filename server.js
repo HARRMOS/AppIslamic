@@ -183,6 +183,8 @@ app.get('/auth/status', authenticateJWT, async (req, res) => {
     id: req.user.id,
     name: req.user.name || req.user.username,
     email: req.user.email,
+    username: req.user.username, // Ajouté
+    profile_picture: req.user.profile_picture, // Ajouté
     mysql_id: req.user.mysql_id
   };
   res.status(200).json({ user: responseUser });
