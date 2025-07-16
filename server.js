@@ -1333,6 +1333,38 @@ app.get('/api/user/:userId/conversations', authenticateJWT, async (req, res) => 
   }
 });
 
+// ===================== ROUTE MISE À JOUR PROFIL UTILISATEUR =====================
+app.put('/api/user/profile', authenticateJWT, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { username, profile_picture } = req.body;
+    if (!username && !profile_picture) {
+      return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour.' });
+    }
+    const fields = [];
+    const values = [];
+    if (username) {
+      fields.push('username = ?');
+      values.push(username);
+    }
+    if (profile_picture) {
+      fields.push('profile_picture = ?');
+      values.push(profile_picture);
+    }
+    if (fields.length === 0) {
+      return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour.' });
+    }
+    values.push(userId);
+    await mysqlPool.execute(
+      `UPDATE users SET ${fields.join(', ')} WHERE id = ?`,
+      values
+    );
+    res.json({ success: true, message: 'Profil mis à jour.' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Erreur lors de la mise à jour du profil.', error: error.message });
+  }
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
