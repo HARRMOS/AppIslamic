@@ -553,8 +553,8 @@ app.get('/api/bots', async (req, res) => {
 
 
 // ===================== ROUTES EVENEMENTS CALENDRIER =====================
-// Liste tous les événements
-app.get('/api/events', authenticateJWT, async (req, res) => {
+// Liste tous les événements (publique)
+app.get('/api/events', async (req, res) => {
   try {
     const [rows] = await mysqlPool.execute('SELECT * FROM islamic_events ORDER BY date ASC');
     res.json({ events: rows });
