@@ -551,6 +551,46 @@ app.get('/api/bots', async (req, res) => {
 // });
 
 
+
+// ===================== ROUTES EVENEMENTS CALENDRIER =====================
+// Liste tous les événements
+app.get('/api/events', authenticateJWT, async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.execute('SELECT * FROM islamic_events ORDER BY date ASC');
+    res.json({ events: rows });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la récupération des événements', details: error.message });
+  }
+});
+// Ajout d'un événement (admin)
+app.post('/api/events', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { date, name, icon, description } = req.body;
+    if (!date || !name) {
+      return res.status(400).json({ error: 'Date et nom obligatoires' });
+    }
+    await mysqlPool.execute(
+      'INSERT INTO islamic_events (date, name, icon, description) VALUES (?, ?, ?, ?)',
+      [date, name, icon || '', description || '']
+    );
+    res.status(201).json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de l\'ajout de l\'événement', details: error.message });
+  }
+});
+// Suppression d'un événement (admin)
+app.delete('/api/events/:id', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await mysqlPool.execute('DELETE FROM islamic_events WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Erreur lors de la suppression de l\'événement', details: error.message });
+  }
+}); 
+
+
+
 // ===================== CRUD DUA =====================
 
 // Récupérer toutes les duas
@@ -1497,41 +1537,3 @@ app.post('/admin/login', async (req, res) => {
   }
   return res.status(403).json({ error: 'Identifiants invalides' });
 }); 
-
-// ===================== ROUTES EVENEMENTS CALENDRIER =====================
-// Liste tous les événements
-app.get('/api/events', authenticateJWT, async (req, res) => {
-  try {
-    const [rows] = await mysqlPool.execute('SELECT * FROM islamic_events ORDER BY date ASC');
-    res.json({ events: rows });
-  } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de la récupération des événements', details: error.message });
-  }
-});
-// Ajout d'un événement (admin)
-app.post('/api/events', authenticateJWT, requireAdmin, async (req, res) => {
-  try {
-    const { date, name, icon, description } = req.body;
-    if (!date || !name) {
-      return res.status(400).json({ error: 'Date et nom obligatoires' });
-    }
-    await mysqlPool.execute(
-      'INSERT INTO islamic_events (date, name, icon, description) VALUES (?, ?, ?, ?)',
-      [date, name, icon || '', description || '']
-    );
-    res.status(201).json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de l\'ajout de l\'événement', details: error.message });
-  }
-});
-// Suppression d'un événement (admin)
-app.delete('/api/events/:id', authenticateJWT, requireAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    await mysqlPool.execute('DELETE FROM islamic_events WHERE id = ?', [id]);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Erreur lors de la suppression de l\'événement', details: error.message });
-  }
-}); 
-
