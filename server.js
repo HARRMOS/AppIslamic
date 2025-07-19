@@ -1,4 +1,4 @@
-import express from 'express';
+_import express from 'express';
 import dotenv from 'dotenv';
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
@@ -31,7 +31,7 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import fs from 'fs';
 import { OAuth2Client } from 'google-auth-library';
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID_IOS);
 
 
 dotenv.config();
