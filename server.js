@@ -295,7 +295,7 @@ app.post('/auth/mobile', async (req, res) => {
   try {
     const ticket = await googleClient.verifyIdToken({
       idToken,
-      audience: process.env.GOOGLE_CLIENT_ID,
+      audience: process.env.GOOGLE_CLIENT_ID_IOS,
     });
     const payload = ticket.getPayload();
     // payload.sub = Google user ID
