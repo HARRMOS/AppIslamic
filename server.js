@@ -30,6 +30,8 @@ import jwt from 'jsonwebtoken';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import fs from 'fs';
+import { OAuth2Client } from 'google-auth-library';
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
 dotenv.config();
@@ -285,6 +287,28 @@ app.put('/api/users/:userId/preferences', authenticateJWT, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erreur lors de la mise à jour des préférences.' });
   }
 });
+
+
+app.post('/auth/mobile', async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ message: 'Token manquant' });
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    // payload.sub = Google user ID
+    // payload.email, payload.name, payload.picture
+    const user = await findOrCreateUser(payload.sub, payload.name, payload.email, payload.picture);
+    // Générer un JWT maison
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token, user });
+  } catch (err) {
+    res.status(401).json({ message: 'Token Google invalide', error: err.message });
+  }
+}); 
+
 // ===================== ROUTES STATISTIQUES =====================
 app.post('/api/stats', authenticateJWT, async (req, res) => {
   console.log('POST /api/stats', req.body);
