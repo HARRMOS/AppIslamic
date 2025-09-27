@@ -12,7 +12,7 @@ import {
   getUserStats,
   mysqlPool, // <-- Ajouté ici
   updateConversationTitleMySQL,
-  deleteConversationMySQL,
+  deleteConversation,
   getConversationsForUserBot, // Ajouté
   getBotById,
   getMessagesForUserBot, // Ajouté
