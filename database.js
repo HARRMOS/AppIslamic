@@ -8,14 +8,13 @@ export const pgPool = new Pool({
   user: process.env.PG_USER || 'harrisw',
   password: process.env.PG_PASSWORD || 'tGwJuqx6jRLYS8r4RCa9fGeYxpwzYTdU',
   database: process.env.PG_DB || 'ummati',
-  ssl: { rejectUnauthorized: false }, // pour Render Postgres
-  max: 10, // max connections
+  ssl: { rejectUnauthorized: false },
+  max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
 
 // -------------------- UTILISATEURS --------------------
-
 export async function findOrCreateUser(googleId, username, email) {
   try {
     const res = await pgPool.query('SELECT * FROM users WHERE id = $1', [googleId]);
@@ -73,7 +72,6 @@ export async function incrementChatbotMessagesUsed(userId) {
 }
 
 // -------------------- STATS QURAN --------------------
-
 export async function getUserStats(userId) {
   const res = await pgPool.query(
     `SELECT 
@@ -88,7 +86,6 @@ export async function getUserStats(userId) {
 }
 
 // -------------------- CONVERSATIONS --------------------
-
 export async function updateConversationTitle(userId, botId, conversationId, title) {
   const res = await pgPool.query(
     'UPDATE conversations SET title = $1, updatedAt = NOW() WHERE id = $2 AND userId = $3 AND botId = $4',
@@ -134,7 +131,6 @@ export async function getUserBotPreferences(userId, botId) {
 }
 
 // -------------------- QUIZ --------------------
-
 export async function saveQuizResult(userId, theme, level, score, total, details = null, quiz_id) {
   const date = new Date().toISOString().slice(0, 19).replace('T', ' ');
   await pgPool.query(
@@ -149,7 +145,6 @@ export async function getQuizResultsForUser(userId) {
 }
 
 // -------------------- MAINTENANCE --------------------
-
 export async function setMaintenance(enabled, id = '', pwd = '') {
   await pgPool.query(
     'UPDATE maintenance SET enabled = $1, admin_id = $2, admin_pwd = $3 WHERE id = 1',
@@ -164,12 +159,10 @@ export async function getMaintenance() {
 }
 
 // -------------------- SYNCHRO UTILISATEUR --------------------
-
 export async function syncUserToPostgres(googleId, name, email) {
-  let user = await findOrCreateUser(googleId, name, email);
+  const user = await findOrCreateUser(googleId, name, email);
   if (!user) return null;
-  
-  // Initialisation des stats si jamais aucune entrée
+
   const stats = await pgPool.query('SELECT * FROM quran_stats WHERE user_id = $1', [user.id]);
   if (stats.rows.length === 0) {
     await pgPool.query(
