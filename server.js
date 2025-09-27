@@ -10,7 +10,6 @@ import {
   checkGlobalChatbotQuota,
   incrementChatbotMessagesUsed,
   getUserStats,
-  mysqlPool, // <-- Ajouté ici
   updateConversationTitleMySQL,
   deleteConversation,
   getConversationsForUserBot, // Ajouté
