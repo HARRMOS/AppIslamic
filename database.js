@@ -2,11 +2,11 @@ import mysql from 'mysql2/promise';
 
 // Connexion MySQL OVH
 const mysqlPool = mysql.createPool({
-  host: 'mh285989-001.eu.clouddb.ovh.net',
-  port: 35693,
-  user: 'bts',
-  password: 'Harris91270',
-  database: 'islamicApp',
+  host: 'dpg-d3bqc524d50c73c11chg-a.oregon-postgres.render.com',
+  port: 5432,
+  user: 'harrisw',
+  password: 'tGwJuqx6jRLYS8r4RCa9fGeYxpwzYTdU',
+  database: 'ummati',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
