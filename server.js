@@ -5,6 +5,7 @@ const require = createRequire(import.meta.url);
 import bodyParser from 'body-parser';
 import { 
   syncUserToMySQL,
+  pgPool,
   findOrCreateUser,
   findUserById,
   checkGlobalChatbotQuota,
