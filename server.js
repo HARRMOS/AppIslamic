@@ -4,19 +4,19 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 import bodyParser from 'body-parser';
 import { 
-  syncUserToMySQL,
+  syncUserToPostgres,
   pgPool,
   findOrCreateUser,
   findUserById,
   checkGlobalChatbotQuota,
   incrementChatbotMessagesUsed,
   getUserStats,
-  updateConversationTitleMySQL,
+  updateConversationTitle,
   deleteConversation,
-  getConversationsForUserBot, // Ajouté
+  getConversationsForUserBot,
   getBotById,
-  getMessagesForUserBot, // Ajouté
-  getUserBotPreferences, // Ajouté
+  getMessagesForUserBot,
+  getUserBotPreferences,
   saveQuizResult,
   getQuizResultsForUser,
   setMaintenance,
