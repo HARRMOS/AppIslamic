@@ -165,9 +165,9 @@ passport.use(new GoogleStrategy({
     // On crée ou récupère l'utilisateur dans la base
     const user = await findOrCreateUser(profile.id, profile.displayName, profile.emails[0].value);
     return done(null, user);
-  } catch (err) {
+    } catch (err) {
     return done(err, null);
-  }
+    }
 }));
 
 app.use(passport.initialize());
@@ -198,15 +198,20 @@ app.use('/auth/status', (req, res, next) => {
 });
 // Route pour vérifier l'état de l'authentification (pour le frontend)
 app.get('/auth/status', authenticateJWT, async (req, res) => {
-  const responseUser = {
-    id: req.user.id,
+    const responseUser = { 
+      id: req.user.id, 
     name: req.user.name || req.user.username,
-    email: req.user.email,
+      email: req.user.email, 
     username: req.user.username, // Ajouté
     profile_picture: req.user.profile_picture, // Ajouté
     mysql_id: req.user.mysql_id
-  };
-  res.status(200).json({ user: responseUser });
+    };
+    res.status(200).json({ user: responseUser });
+});
+
+// Route de login (redirection vers Google OAuth)
+app.get('/login', (req, res) => {
+  res.redirect('/auth/google');
 });
 
 // Route pour initier l'authentification Google
@@ -1532,4 +1537,3 @@ app.post('/admin/login', async (req, res) => {
   }
   return res.status(403).json({ error: 'Identifiants invalides' });
 }); 
-
