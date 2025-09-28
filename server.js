@@ -65,7 +65,7 @@ function authenticateJWT(req, res, next) {
     console.log('Header Authorization mal formé');
     return res.status(401).json({ message: 'Token manquant' });
   }
-  const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+  const JWT_SECRET = process.env.JWT_SECRET || 'ma_cle_secrete_ultra_longue';
   jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) {
       console.log('Erreur de vérification JWT:', err.message);
@@ -137,7 +137,7 @@ console.log('========================');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+const JWT_SECRET = process.env.JWT_SECRET || 'ma_cle_secrete_ultra_longue';
 
 passport.use(new GoogleStrategy({
   clientID: GOOGLE_CLIENT_ID,
