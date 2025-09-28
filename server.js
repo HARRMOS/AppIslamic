@@ -4,27 +4,23 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 import bodyParser from 'body-parser';
 import { 
-  initDatabase,
+  syncUserToMySQL,
   findOrCreateUser,
   findUserById,
-  getBots,
-  addMessage,
-  getMessagesForUserBot,
-  addBot,
-  updateBot,
-  deleteBot,
+  checkGlobalChatbotQuota,
+  incrementChatbotMessagesUsed,
+  getUserStats,
+  mysqlPool, // <-- Ajouté ici
+  updateConversationTitleMySQL,
+  deleteConversationMySQL,
+  getConversationsForUserBot, // Ajouté
   getBotById,
-  checkMessageLimit,
-  getActivatedBotsForUser,
-  activateBotForUser,
-  addActivationKey,
-  getConversationsForUserBot,
-  deleteConversation,
-  updateConversationTitle,
-  getConversationById,
-  addConversation,
-  saveUserBotPreferences,
-  getUserBotPreferences
+  getMessagesForUserBot, // Ajouté
+  getUserBotPreferences, // Ajouté
+  saveQuizResult,
+  getQuizResultsForUser,
+  setMaintenance,
+  getMaintenance
 } from './database.js';
 import cors from 'cors';
 import openai from './openai.js';
