@@ -209,10 +209,7 @@ app.get('/auth/status', authenticateJWT, async (req, res) => {
     res.status(200).json({ user: responseUser });
 });
 
-// Route de login (redirection vers Google OAuth)
-app.get('/login', (req, res) => {
-  res.redirect('/auth/google');
-});
+
 
 // Route pour initier l'authentification Google
 app.get('/auth/google',
@@ -220,7 +217,7 @@ app.get('/auth/google',
 );
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  passport.authenticate('google', { session: false, failureRedirect: 'https://www.ummati.pro/login' }),
   (req, res) => {
     // Générer un JWT pour l'utilisateur connecté
     const token = generateJWTToken(req.user);
