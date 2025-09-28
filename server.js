@@ -21,7 +21,8 @@ import {
   getQuizResultsForUser,
   setMaintenance,
   getMaintenance
-} from './database.js';mport cors from 'cors';
+} from './database.js';
+  import cors from 'cors';
 import openai from './openai.js';
 
 dotenv.config();
