@@ -22,7 +22,6 @@ import {
   setMaintenance,
   getMaintenance
 } from './database.js';
-
 import cors from 'cors';
 import openai from './openai.js';
 import path from 'path';
@@ -31,6 +30,8 @@ import jwt from 'jsonwebtoken';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import fs from 'fs';
+import { OAuth2Client } from 'google-auth-library';
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
 dotenv.config();
@@ -64,7 +65,7 @@ function authenticateJWT(req, res, next) {
     console.log('Header Authorization mal formé');
     return res.status(401).json({ message: 'Token manquant' });
   }
-  const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+  const JWT_SECRET = process.env.JWT_SECRET || 'ma_cle_secrete_ultra_longue';
   jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) {
       console.log('Erreur de vérification JWT:', err.message);
@@ -136,7 +137,7 @@ console.log('========================');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+const JWT_SECRET = process.env.JWT_SECRET || 'ma_cle_secrete_ultra_longue';
 
 passport.use(new GoogleStrategy({
   clientID: GOOGLE_CLIENT_ID,
@@ -286,6 +287,28 @@ app.put('/api/users/:userId/preferences', authenticateJWT, async (req, res) => {
     res.status(500).json({ success: false, message: 'Erreur lors de la mise à jour des préférences.' });
   }
 });
+
+
+app.post('/auth/mobile', async (req, res) => {
+  const { idToken } = req.body;
+  if (!idToken) return res.status(400).json({ message: 'Token manquant' });
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: process.env.GOOGLE_CLIENT_ID_IOS,
+    });
+    const payload = ticket.getPayload();
+    // payload.sub = Google user ID
+    // payload.email, payload.name, payload.picture
+    const user = await findOrCreateUser(payload.sub, payload.name, payload.email, payload.picture);
+    // Générer un JWT maison
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token, user });
+  } catch (err) {
+    res.status(401).json({ message: 'Token Google invalide', error: err.message });
+  }
+}); 
+
 // ===================== ROUTES STATISTIQUES =====================
 app.post('/api/stats', authenticateJWT, async (req, res) => {
   console.log('POST /api/stats', req.body);
