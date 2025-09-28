@@ -211,13 +211,31 @@ app.get('/auth/status', authenticateJWT, async (req, res) => {
 
 
 
+
+// Route de test pour vérifier l'authentification
+app.get('/test-auth', authenticateJWT, (req, res) => {
+  res.json({ 
+    message: 'Authentification réussie !',
+    user: {
+      id: req.user.id,
+      email: req.user.email,
+      name: req.user.name
+    }
+  });
+});
+
+// Route de login (redirection vers Google OAuth)
+app.get('/login', (req, res) => {
+  res.redirect('/auth/google');
+});
+
 // Route pour initier l'authentification Google
 app.get('/auth/google',
   passport.authenticate('google', { scope: ['profile', 'email'] })
 );
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: 'https://www.ummati.pro/login' }),
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
   (req, res) => {
     // Générer un JWT pour l'utilisateur connecté
     const token = generateJWTToken(req.user);
@@ -225,6 +243,33 @@ app.get('/auth/google/callback',
     res.redirect(`https://www.ummati.pro/auth/callback?token=${token}`);
   }
 );
+
+// Route pour générer un token JWT de test (sans authentification)
+app.get('/test-token', (req, res) => {
+  try {
+    const testUser = {
+      id: 'test-user-123',
+      email: 'test@example.com',
+      name: 'Utilisateur Test'
+    };
+    
+    const token = generateJWTToken(testUser);
+    
+    res.json({ 
+      message: 'Token de test généré',
+      token: token,
+      testUrl: `/test-auth?authorization=Bearer ${token}`,
+      instructions: {
+        step1: 'Copiez le token ci-dessus',
+        step2: 'Testez avec: curl -H "Authorization: Bearer TOKEN" https://appislamic.onrender.com/test-auth',
+        step3: 'Ou ajoutez le token dans vos requêtes frontend'
+      }
+    });
+  } catch (error) {
+    console.error('Erreur lors de la génération du token de test:', error);
+    res.status(500).json({ message: 'Erreur lors de la génération du token de test' });
+  }
+});
 
 // Route pour générer un token JWT (pour les tests)
 app.post('/auth/token', (req, res) => {
