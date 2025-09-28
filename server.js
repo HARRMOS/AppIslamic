@@ -197,16 +197,40 @@ app.use('/auth/status', (req, res, next) => {
   next();
 });
 // Route pour vérifier l'état de l'authentification (pour le frontend)
-app.get('/auth/status', authenticateJWT, async (req, res) => {
-    const responseUser = { 
-      id: req.user.id, 
-    name: req.user.name || req.user.username,
-      email: req.user.email, 
-    username: req.user.username, // Ajouté
-    profile_picture: req.user.profile_picture, // Ajouté
-    mysql_id: req.user.mysql_id
-    };
-    res.status(200).json({ user: responseUser });
+app.get('/auth/status', async (req, res) => {
+  console.log('=== Début de la requête /auth/status ===');
+  console.log('Headers:', req.headers);
+  console.log('Authorization header:', req.headers.authorization);
+  
+  // Vérifier l'authentification par JWT
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      console.log('Utilisateur authentifié par JWT, ID:', decoded.id);
+      
+      // Récupérer l'utilisateur depuis la base de données
+      const user = await findUserById(decoded.id);
+      if (user) {
+        const responseUser = { 
+          id: user.id, 
+          name: user.name, 
+          email: user.email
+        };
+        console.log('/auth/status - Envoi de la réponse user (authentifié par JWT): ', responseUser);
+        res.status(200).json({ user: responseUser });
+        return;
+      }
+    } catch (error) {
+      console.error('Erreur de vérification JWT:', error);
+      // Continue vers le cas non authentifié
+    }
+  }
+
+  console.log('Utilisateur non authentifié');
+  res.status(200).json({ user: null });
+  console.log('=== Fin de la requête /auth/status ===');
 });
 
 
@@ -223,6 +247,8 @@ app.get('/test-auth', authenticateJWT, (req, res) => {
     }
   });
 });
+
+
 
 
 
