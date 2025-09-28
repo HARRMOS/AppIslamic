@@ -224,10 +224,7 @@ app.get('/test-auth', authenticateJWT, (req, res) => {
   });
 });
 
-// Route de login (redirection vers Google OAuth)
-app.get('/login', (req, res) => {
-  res.redirect('/auth/google');
-});
+
 
 // Route pour initier l'authentification Google
 app.get('/auth/google',
