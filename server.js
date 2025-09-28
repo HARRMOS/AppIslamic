@@ -197,7 +197,7 @@ app.get('/auth/google',
 );
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
+  passport.authenticate('google', { session: false, failureRedirect: 'https://www.ummati.pro/login' }),
   (req, res) => {
     // Générer un JWT pour l'utilisateur connecté
     const token = jwt.sign(
