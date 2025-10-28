@@ -4,19 +4,19 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 import bodyParser from 'body-parser';
 import { 
-  syncUserToPostgres,
-  pgPool,
+  syncUserToMySQL,
   findOrCreateUser,
   findUserById,
   checkGlobalChatbotQuota,
   incrementChatbotMessagesUsed,
   getUserStats,
-  updateConversationTitle,
-  deleteConversation,
-  getConversationsForUserBot,
+  mysqlPool, // <-- Ajouté ici
+  updateConversationTitleMySQL,
+  deleteConversationMySQL,
+  getConversationsForUserBot, // Ajouté
   getBotById,
-  getMessagesForUserBot,
-  getUserBotPreferences,
+  getMessagesForUserBot, // Ajouté
+  getUserBotPreferences, // Ajouté
   saveQuizResult,
   getQuizResultsForUser,
   setMaintenance,
@@ -63,15 +63,10 @@ function authenticateJWT(req, res, next) {
     console.log('Header Authorization mal formé');
     return res.status(401).json({ message: 'Token manquant' });
   }
-  const JWT_SECRET = process.env.JWT_SECRET || 'votre-secret-jwt-super-securise-changez-cela';
+  const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
   jwt.verify(token, JWT_SECRET, async (err, decoded) => {
     if (err) {
       console.log('Erreur de vérification JWT:', err.message);
-      if (err.name === 'TokenExpiredError') {
-        return res.status(401).json({ message: 'Token expiré', error: 'Token expiré' });
-      } else if (err.name === 'JsonWebTokenError') {
-        return res.status(401).json({ message: 'Token invalide', error: 'Token invalide' });
-      }
       return res.status(401).json({ message: 'Token invalide ou expiré', error: err.message });
     }
     console.log('Payload décodé:', decoded);
@@ -101,6 +96,9 @@ const allowedOrigins = [
   'https://quran-pro.harrmos.com',
   'https://ummati.pro',
   'https://appislamic.onrender.com',
+  'http://localhost:5173',
+  'https://localhost:3000/auth/google/callback',
+  'http://localhost:3000',
   
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
@@ -115,7 +113,7 @@ const corsOptions = {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true,
+  credentials: "include",
 };
 app.use(cors(corsOptions));
 
@@ -140,34 +138,20 @@ console.log('========================');
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || 'votre-secret-jwt-super-securise-changez-cela';
-
-// Fonction utilitaire pour générer un token JWT
-function generateJWTToken(user) {
-  return jwt.sign(
-    { 
-      id: user.id, 
-      email: user.email,
-      name: user.name || user.username,
-      googleId: user.googleId
-    },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-}
+const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
 
 passport.use(new GoogleStrategy({
   clientID: GOOGLE_CLIENT_ID,
   clientSecret: GOOGLE_CLIENT_SECRET,
-  callbackURL: 'https://appislamic.onrender.com/auth/google/callback',
+  callbackURL: 'https://appislamic-sql.onrender.com/auth/google/callback',
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     // On crée ou récupère l'utilisateur dans la base
     const user = await findOrCreateUser(profile.id, profile.displayName, profile.emails[0].value);
     return done(null, user);
-    } catch (err) {
+  } catch (err) {
     return done(err, null);
-    }
+  }
 }));
 
 app.use(passport.initialize());
@@ -197,60 +181,17 @@ app.use('/auth/status', (req, res, next) => {
   next();
 });
 // Route pour vérifier l'état de l'authentification (pour le frontend)
-app.get('/auth/status', async (req, res) => {
-  console.log('=== Début de la requête /auth/status ===');
-  console.log('Headers:', req.headers);
-  console.log('Authorization header:', req.headers.authorization);
-  
-  // Vérifier l'authentification par JWT
-  const authHeader = req.headers['authorization'];
-  if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.split(' ')[1];
-    try {
-      const decoded = jwt.verify(token, JWT_SECRET);
-      console.log('Utilisateur authentifié par JWT, ID:', decoded.id);
-      
-      // Récupérer l'utilisateur depuis la base de données
-      const user = await findUserById(decoded.id);
-      if (user) {
-        const responseUser = { 
-          id: user.id, 
-          name: user.name, 
-          email: user.email
-        };
-        console.log('/auth/status - Envoi de la réponse user (authentifié par JWT): ', responseUser);
-        res.status(200).json({ user: responseUser });
-        return;
-      }
-    } catch (error) {
-      console.error('Erreur de vérification JWT:', error);
-      // Continue vers le cas non authentifié
-    }
-  }
-
-  console.log('Utilisateur non authentifié');
-  res.status(200).json({ user: null });
-  console.log('=== Fin de la requête /auth/status ===');
+app.get('/auth/status', authenticateJWT, async (req, res) => {
+  const responseUser = {
+    id: req.user.id,
+    name: req.user.name || req.user.username,
+    email: req.user.email,
+    username: req.user.username, // Ajouté
+    profile_picture: req.user.profile_picture, // Ajouté
+    mysql_id: req.user.mysql_id
+  };
+  res.status(200).json({ user: responseUser });
 });
-
-
-
-
-// Route de test pour vérifier l'authentification
-app.get('/test-auth', authenticateJWT, (req, res) => {
-  res.json({ 
-    message: 'Authentification réussie !',
-    user: {
-      id: req.user.id,
-      email: req.user.email,
-      name: req.user.name
-    }
-  });
-});
-
-
-
-
 
 // Route pour initier l'authentification Google
 app.get('/auth/google',
@@ -258,63 +199,18 @@ app.get('/auth/google',
 );
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: 'https://www.ummati.pro/login' }),
+  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
   (req, res) => {
     // Générer un JWT pour l'utilisateur connecté
-    const token = generateJWTToken(req.user);
-    // Rediriger vers le frontend avec le token en query (à adapter selon ton frontend)
-    res.redirect(`https://www.ummati.pro/auth/callback?token=${token}`);
-  }
-);
-
-// Route pour générer un token JWT de test (sans authentification)
-app.get('/test-token', (req, res) => {
-  try {
-    const testUser = {
-      id: 'test-user-123',
-      email: 'test@example.com',
-      name: 'Utilisateur Test'
-    };
-    
-    const token = generateJWTToken(testUser);
-    
-    res.json({ 
-      message: 'Token de test généré',
-      token: token,
-      testUrl: `/test-auth?authorization=Bearer ${token}`,
-      instructions: {
-        step1: 'Copiez le token ci-dessus',
-        step2: 'Testez avec: curl -H "Authorization: Bearer TOKEN" https://appislamic.onrender.com/test-auth',
-        step3: 'Ou ajoutez le token dans vos requêtes frontend'
-      }
-    });
-  } catch (error) {
-    console.error('Erreur lors de la génération du token de test:', error);
-    res.status(500).json({ message: 'Erreur lors de la génération du token de test' });
-  }
-});
-
-// Route pour générer un token JWT (pour les tests)
-app.post('/auth/token', (req, res) => {
-  const { userId, email, name } = req.body;
-  
-  if (!userId || !email) {
-    return res.status(400).json({ message: 'userId et email sont requis' });
-  }
-
-  try {
     const token = jwt.sign(
-      { id: userId, email, name },
+      { id: req.user.id, email: req.user.email },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
-    
-    res.status(200).json({ token });
-  } catch (error) {
-    console.error('Erreur lors de la génération du token:', error);
-    res.status(500).json({ message: 'Erreur lors de la génération du token' });
+    // Rediriger vers le frontend avec le token en query (à adapter selon ton frontend)
+    res.redirect(`http://https://www.ummati.pro/auth/callback?token=${token}`);
   }
-});
+);
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
@@ -1582,6 +1478,7 @@ app.get('/admin/generate-token', (req, res) => {
     id: 'admin-id', // Remplace par l'id réel si besoin
     email: 'mohammadharris200528@gmail.com'
   };
+  const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
   const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
   res.json({ token });
 }); 
@@ -1597,8 +1494,10 @@ app.post('/admin/login', async (req, res) => {
       id: 'admin-id', // Mets l'id réel si tu veux
       email
     };
+    const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
     return res.json({ token });
   }
   return res.status(403).json({ error: 'Identifiants invalides' });
 }); 
+
