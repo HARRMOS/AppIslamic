@@ -90,6 +90,7 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Configuration CORS - Origines autorisées
 const allowedOrigins = [
   'https://www.quran-pro.harrmos.com',
   'https://www.ummati.pro',
@@ -97,11 +98,21 @@ const allowedOrigins = [
   'https://ummati.pro',
   'https://appislamic.onrender.com',
   'http://localhost:5173',
-  'https://localhost:3000/auth/google/callback',
   'http://localhost:3000',
-  
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
+
+// Ajouter FRONTEND_URL depuis les variables d'environnement si défini
+if (process.env.FRONTEND_URL) {
+  const frontendUrl = process.env.FRONTEND_URL;
+  if (!allowedOrigins.includes(frontendUrl)) {
+    allowedOrigins.push(frontendUrl);
+  }
+  // Ajouter aussi la version avec www si applicable
+  if (frontendUrl.startsWith('https://') && !frontendUrl.includes('www.')) {
+    allowedOrigins.push(frontendUrl.replace('https://', 'https://www.'));
+  }
+}
 
 const corsOptions = {
   origin: function (origin, callback) {
@@ -139,11 +150,19 @@ console.log('========================');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+const BACKEND_URL = process.env.BACKEND_URL || 'https://appislamic.onrender.com';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://ummati.pro';
+
+// Vérifier que les variables Google OAuth sont définies
+if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+  console.error('⚠️  ERREUR: GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET doivent être définis dans les variables d\'environnement');
+  console.error('⚠️  L\'authentification Google ne fonctionnera pas sans ces variables');
+}
 
 passport.use(new GoogleStrategy({
   clientID: GOOGLE_CLIENT_ID,
   clientSecret: GOOGLE_CLIENT_SECRET,
-  callbackURL: 'https://appislamic-sql.onrender.com/auth/google/callback',
+  callbackURL: `${BACKEND_URL}/auth/google/callback`,
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     // On crée ou récupère l'utilisateur dans la base
@@ -207,8 +226,9 @@ app.get('/auth/google/callback',
       JWT_SECRET,
       { expiresIn: '7d' }
     );
-    // Rediriger vers le frontend avec le token en query (à adapter selon ton frontend)
-    res.redirect(`http://https://www.ummati.pro/auth/callback?token=${token}`);
+    // Rediriger vers le frontend avec le token en query
+    const frontendUrl = process.env.FRONTEND_URL || 'https://ummati.pro';
+    res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
   }
 );
 
