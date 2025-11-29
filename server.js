@@ -262,15 +262,18 @@ app.get('/auth/google/callback',
 );
 
 // Route spéciale pour le callback mobile
-// L'app détecte cette URL via browserPageLoaded et extrait le token directement
-// Pas besoin de page HTML complexe, juste une page simple qui confirme la connexion
+// La page HTML redirige vers une URL que l'app peut intercepter via appUrlOpen
 app.get('/auth/mobile-callback', (req, res) => {
   const token = req.query.token;
   if (!token) {
     return res.status(400).send('Token manquant');
   }
   
-  // Page HTML très simple - l'app détectera l'URL et extraira le token automatiquement
+  // Échapper le token pour éviter les problèmes de syntaxe
+  const escapedToken = String(token).replace(/'/g, "\\'").replace(/"/g, '\\"');
+  
+  // Page HTML qui redirige vers une URL que l'app peut intercepter
+  // On utilise ummati:// qui est configuré dans capacitor.config.ts
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -311,9 +314,51 @@ app.get('/auth/mobile-callback', (req, res) => {
       <div class="spinner"></div>
       <h2>Connexion réussie !</h2>
       <p>Fermeture en cours...</p>
-      <p style="font-size: 0.9rem; opacity: 0.8; margin-top: 1rem;">
-        L'application va se fermer automatiquement.
-      </p>
+      <script>
+        (function() {
+          const token = '${escapedToken}';
+          
+          // Essayer de sauvegarder dans localStorage (au cas où)
+          try {
+            localStorage.setItem('jwt', token);
+            console.log('Token sauvegardé dans localStorage');
+          } catch (e) {
+            console.log('Erreur localStorage:', e);
+          }
+          
+          // Essayer de sauvegarder dans Preferences via Capacitor (si disponible)
+          try {
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
+              window.Capacitor.Plugins.Preferences.set({
+                key: 'jwt',
+                value: token
+              }).then(() => {
+                console.log('Token sauvegardé dans Preferences');
+              }).catch((e) => {
+                console.log('Erreur Preferences:', e);
+              });
+            }
+          } catch (e) {
+            console.log('Capacitor non disponible:', e);
+          }
+          
+          // Rediriger vers l'URL que l'app peut intercepter
+          // L'app écoute appUrlOpen et extraira le token de l'URL
+          setTimeout(() => {
+            try {
+              // Essayer de fermer le navigateur
+              if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                window.Capacitor.Plugins.Browser.close().catch(() => {});
+              }
+            } catch (e) {
+              // Ignorer
+            }
+            
+            // Rediriger vers l'URL de deep link que l'app peut intercepter
+            window.location.href = 'ummati://auth/callback?token=' + encodeURIComponent(token);
+          }, 1000);
+        })();
+      </script>
     </body>
     </html>
   `);
