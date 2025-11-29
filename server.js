@@ -313,8 +313,13 @@ app.get('/auth/mobile-callback', (req, res) => {
             (async function() {
               const token = '${escapedToken}';
               
-              // Méthode 1 : Essayer de sauvegarder dans Preferences via Capacitor
-              // (peut ne pas fonctionner si Capacitor n'est pas accessible)
+              console.log('🔐 Sauvegarde du token...');
+              
+              // Sauvegarder dans localStorage (partagé entre navigateur in-app et app principale dans Capacitor)
+              localStorage.setItem('jwt', token);
+              console.log('✅ Token sauvegardé dans localStorage:', token.substring(0, 20) + '...');
+              
+              // Essayer aussi de sauvegarder dans Preferences si disponible
               try {
                 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
                   await window.Capacitor.Plugins.Preferences.set({
@@ -324,31 +329,23 @@ app.get('/auth/mobile-callback', (req, res) => {
                   console.log('✅ Token sauvegardé dans Preferences');
                 }
               } catch (e) {
-                console.log('Capacitor Preferences non disponible:', e);
+                console.log('⚠️ Capacitor Preferences non disponible (normal dans navigateur in-app)');
               }
               
-              // Méthode 2 : Sauvegarder dans localStorage (partagé avec l'app principale)
-              localStorage.setItem('jwt', token);
-              console.log('✅ Token sauvegardé dans localStorage');
+              // Attendre un peu pour que localStorage soit bien sauvegardé
+              await new Promise(resolve => setTimeout(resolve, 1000));
               
-              // Méthode 3 : Essayer de rediriger vers un deep link que l'app peut intercepter
-              // L'app écoute les URLs via appUrlOpen
+              // Essayer de fermer le navigateur
               try {
-                // Attendre un peu pour que localStorage soit sauvegardé
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                // Essayer de fermer le navigateur
                 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
                   await window.Capacitor.Plugins.Browser.close();
                   console.log('✅ Navigateur fermé');
                 } else {
-                  // Fallback : rediriger vers un deep link
-                  window.location.href = 'ummati://auth/callback?token=' + encodeURIComponent(token);
+                  console.log('⚠️ Capacitor Browser non disponible, l\'app détectera le token automatiquement');
                 }
               } catch (e) {
-                console.log('Erreur lors de la fermeture:', e);
-                // Fallback : rediriger vers un deep link
-                window.location.href = 'ummati://auth/callback?token=' + encodeURIComponent(token);
+                console.log('⚠️ Erreur lors de la fermeture du navigateur (normal):', e);
+                // L'app détectera le token dans localStorage automatiquement
               }
             })();
           </script>
