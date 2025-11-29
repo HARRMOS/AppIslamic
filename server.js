@@ -251,21 +251,42 @@ app.get('/auth/google/callback',
       { expiresIn: '7d' }
     );
     
-    // Détecter si la requête vient d'une app mobile (User-Agent ou Referer)
+    // Détecter si la requête vient d'une app mobile
+    // Vérifier plusieurs sources : User-Agent, Referer, Origin, et paramètre state
     const userAgent = req.headers['user-agent'] || '';
     const referer = req.headers['referer'] || '';
-    const isMobileApp = userAgent.includes('Capacitor') || 
-                        userAgent.includes('Ummati') ||
-                        referer.includes('capacitor://') ||
-                        referer.includes('ummati://') ||
-                        userAgent.includes('Mobile');
+    const origin = req.headers['origin'] || '';
+    const state = req.query.state || '';
     
-    // Si c'est une app mobile, rediriger vers une page HTML qui redirige vers le deep link
-    // Le navigateur in-app ne peut pas ouvrir directement ummati://
+    console.log('🔍 [OAuth Callback] Détection mobile:', {
+      userAgent: userAgent.substring(0, 100),
+      referer: referer.substring(0, 100),
+      origin: origin.substring(0, 100),
+      state: state.substring(0, 50)
+    });
+    
+    const isMobileApp = 
+      userAgent.includes('Capacitor') || 
+      userAgent.includes('Ummati') ||
+      userAgent.includes('Mobile') ||
+      referer.includes('capacitor://') ||
+      referer.includes('ummati://') ||
+      origin.includes('capacitor://') ||
+      origin.includes('ummati://') ||
+      state.includes('mobile') ||
+      state.includes('native');
+    
+    console.log('📱 [OAuth Callback] isMobileApp:', isMobileApp);
+    
+    // Si c'est une app mobile, rediriger directement vers le deep link
+    // L'app interceptera cette URL via appUrlOpen
     if (isMobileApp) {
-      res.redirect(`${BACKEND_URL}/auth/mobile-callback?token=${encodeURIComponent(token)}`);
+      const deepLink = `ummati://auth/callback?token=${encodeURIComponent(token)}`;
+      console.log('🔗 [OAuth Callback] Redirection vers deep link:', deepLink.substring(0, 50) + '...');
+      res.redirect(deepLink);
     } else {
       // Sinon, rediriger vers le frontend web
+      console.log('🌐 [OAuth Callback] Redirection vers frontend web');
       res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
     }
   }
