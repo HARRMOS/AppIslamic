@@ -249,10 +249,10 @@ app.get('/auth/google/callback',
                         referer.includes('ummati://') ||
                         userAgent.includes('Mobile');
     
-    // Si c'est une app mobile, rediriger directement vers le deep link
-    // L'app interceptera cette URL via appUrlOpen
+    // Si c'est une app mobile, rediriger vers une page HTML qui redirige vers le deep link
+    // Le navigateur in-app ne peut pas ouvrir directement ummati://
     if (isMobileApp) {
-      res.redirect(`ummati://auth/callback?token=${encodeURIComponent(token)}`);
+      res.redirect(`${BACKEND_URL}/auth/mobile-callback?token=${encodeURIComponent(token)}`);
     } else {
       // Sinon, rediriger vers le frontend web
       res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
@@ -260,7 +260,83 @@ app.get('/auth/google/callback',
   }
 );
 
-// Route supprimée - on redirige directement vers ummati:// depuis le callback OAuth
+// Route pour le callback mobile - page HTML qui redirige vers le deep link
+app.get('/auth/mobile-callback', (req, res) => {
+  const token = req.query.token;
+  if (!token) {
+    return res.status(400).send('Token manquant');
+  }
+  
+  // Page HTML très simple qui redirige immédiatement vers le deep link
+  // Le navigateur in-app ne peut pas ouvrir directement ummati://, il faut passer par une page HTML
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Connexion réussie</title>
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          margin: 0;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          text-align: center;
+          padding: 2rem;
+        }
+        .spinner {
+          border: 4px solid rgba(255,255,255,0.3);
+          border-top: 4px solid white;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="spinner"></div>
+      <h2>Connexion réussie !</h2>
+      <p>Redirection en cours...</p>
+      <script>
+        (function() {
+          const token = '${String(token).replace(/'/g, "\\'").replace(/"/g, '\\"')}';
+          const deepLink = 'ummati://auth/callback?token=' + encodeURIComponent(token);
+          
+          console.log('🔗 Redirection vers:', deepLink);
+          
+          // Essayer de fermer le navigateur d'abord
+          try {
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+              window.Capacitor.Plugins.Browser.close().catch(() => {});
+            }
+          } catch (e) {
+            // Ignorer
+          }
+          
+          // Rediriger vers le deep link
+          // Sur iOS, window.location.href fonctionne pour les deep links
+          // Sur Android, on peut aussi utiliser window.location.href
+          setTimeout(() => {
+            window.location.href = deepLink;
+          }, 500);
+        })();
+      </script>
+    </body>
+    </html>
+  `);
+});
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
