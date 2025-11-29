@@ -281,9 +281,12 @@ app.get('/auth/google/callback',
     // Si c'est une app mobile, rediriger vers la page HTML qui sauvegarde le token
     // Cette page sauvegardera le token dans localStorage et fermera le navigateur
     // L'app détectera le token via appStateChange quand elle revient au premier plan
+    // IMPORTANT: Pour les apps mobiles, utiliser toujours l'URL Render (même si le backend tourne en local)
     if (isMobileApp) {
-      const mobileCallbackUrl = `${BACKEND_URL}/auth/mobile-callback?token=${encodeURIComponent(token)}`;
-      console.log('🔗 [OAuth Callback] Redirection vers mobile-callback:', mobileCallbackUrl.substring(0, 80) + '...');
+      // Utiliser l'URL Render pour les apps mobiles (elles ne peuvent pas accéder à localhost)
+      const renderUrl = 'https://appislamic.onrender.com';
+      const mobileCallbackUrl = `${renderUrl}/auth/mobile-callback?token=${encodeURIComponent(token)}`;
+      console.log('🔗 [OAuth Callback] Redirection vers mobile-callback (Render):', mobileCallbackUrl.substring(0, 80) + '...');
       res.redirect(mobileCallbackUrl);
     } else {
       // Sinon, rediriger vers le frontend web
