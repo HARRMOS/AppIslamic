@@ -249,11 +249,10 @@ app.get('/auth/google/callback',
                         referer.includes('ummati://') ||
                         userAgent.includes('Mobile');
     
-    // Si c'est une app mobile, rediriger vers une page qui ferme le navigateur in-app
+    // Si c'est une app mobile, rediriger directement vers le deep link
+    // L'app interceptera cette URL via appUrlOpen
     if (isMobileApp) {
-      // Rediriger vers une page HTML qui sauvegarde le token et redirige vers l'app
-      // L'app interceptera cette URL via appUrlOpen
-      res.redirect(`${BACKEND_URL}/auth/mobile-callback?token=${token}`);
+      res.redirect(`ummati://auth/callback?token=${encodeURIComponent(token)}`);
     } else {
       // Sinon, rediriger vers le frontend web
       res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
@@ -261,108 +260,7 @@ app.get('/auth/google/callback',
   }
 );
 
-// Route spéciale pour le callback mobile
-// La page HTML redirige vers une URL que l'app peut intercepter via appUrlOpen
-app.get('/auth/mobile-callback', (req, res) => {
-  const token = req.query.token;
-  if (!token) {
-    return res.status(400).send('Token manquant');
-  }
-  
-  // Échapper le token pour éviter les problèmes de syntaxe
-  const escapedToken = String(token).replace(/'/g, "\\'").replace(/"/g, '\\"');
-  
-  // Page HTML qui redirige vers une URL que l'app peut intercepter
-  // On utilise ummati:// qui est configuré dans capacitor.config.ts
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Connexion réussie</title>
-      <style>
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          margin: 0;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          text-align: center;
-          padding: 2rem;
-        }
-        .spinner {
-          border: 4px solid rgba(255,255,255,0.3);
-          border-top: 4px solid white;
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
-          margin: 0 auto 1rem;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="spinner"></div>
-      <h2>Connexion réussie !</h2>
-      <p>Fermeture en cours...</p>
-      <script>
-        (function() {
-          const token = '${escapedToken}';
-          
-          // Essayer de sauvegarder dans localStorage (au cas où)
-          try {
-            localStorage.setItem('jwt', token);
-            console.log('Token sauvegardé dans localStorage');
-          } catch (e) {
-            console.log('Erreur localStorage:', e);
-          }
-          
-          // Essayer de sauvegarder dans Preferences via Capacitor (si disponible)
-          try {
-            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
-              window.Capacitor.Plugins.Preferences.set({
-                key: 'jwt',
-                value: token
-              }).then(() => {
-                console.log('Token sauvegardé dans Preferences');
-              }).catch((e) => {
-                console.log('Erreur Preferences:', e);
-              });
-            }
-          } catch (e) {
-            console.log('Capacitor non disponible:', e);
-          }
-          
-          // Rediriger vers l'URL que l'app peut intercepter
-          // L'app écoute appUrlOpen et extraira le token de l'URL
-          setTimeout(() => {
-            try {
-              // Essayer de fermer le navigateur
-              if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                window.Capacitor.Plugins.Browser.close().catch(() => {});
-              }
-            } catch (e) {
-              // Ignorer
-            }
-            
-            // Rediriger vers l'URL de deep link que l'app peut intercepter
-            window.location.href = 'ummati://auth/callback?token=' + encodeURIComponent(token);
-          }, 1000);
-        })();
-      </script>
-    </body>
-    </html>
-  `);
-});
+// Route supprimée - on redirige directement vers ummati:// depuis le callback OAuth
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
