@@ -260,15 +260,18 @@ app.get('/auth/google/callback',
   }
 );
 
-// Route pour le callback mobile - page HTML qui redirige vers le deep link
+// Route pour le callback mobile - page HTML qui sauvegarde le token et ferme le navigateur
 app.get('/auth/mobile-callback', (req, res) => {
   const token = req.query.token;
   if (!token) {
     return res.status(400).send('Token manquant');
   }
   
-  // Page HTML très simple qui redirige immédiatement vers le deep link
-  // Le navigateur in-app ne peut pas ouvrir directement ummati://, il faut passer par une page HTML
+  // Échapper le token pour éviter les problèmes de syntaxe
+  const escapedToken = String(token).replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  
+  // Page HTML qui sauvegarde le token dans localStorage et ferme le navigateur
+  // L'app détectera le token via appStateChange quand elle revient au premier plan
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -308,29 +311,52 @@ app.get('/auth/mobile-callback', (req, res) => {
     <body>
       <div class="spinner"></div>
       <h2>Connexion réussie !</h2>
-      <p>Redirection en cours...</p>
+      <p>Fermeture en cours...</p>
       <script>
         (function() {
-          const token = '${String(token).replace(/'/g, "\\'").replace(/"/g, '\\"')}';
-          const deepLink = 'ummati://auth/callback?token=' + encodeURIComponent(token);
+          const token = '${escapedToken}';
           
-          console.log('🔗 Redirection vers:', deepLink);
+          console.log('🔐 [Callback] Sauvegarde du token...');
           
-          // Essayer de fermer le navigateur d'abord
+          // Sauvegarder dans localStorage
           try {
-            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-              window.Capacitor.Plugins.Browser.close().catch(() => {});
-            }
+            localStorage.setItem('jwt', token);
+            console.log('✅ [Callback] Token sauvegardé dans localStorage');
           } catch (e) {
-            // Ignorer
+            console.error('❌ [Callback] Erreur localStorage:', e);
           }
           
-          // Rediriger vers le deep link
-          // Sur iOS, window.location.href fonctionne pour les deep links
-          // Sur Android, on peut aussi utiliser window.location.href
+          // Essayer de sauvegarder dans Preferences via Capacitor (si disponible)
+          try {
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
+              window.Capacitor.Plugins.Preferences.set({
+                key: 'jwt',
+                value: token
+              }).then(() => {
+                console.log('✅ [Callback] Token sauvegardé dans Preferences');
+              }).catch((e) => {
+                console.log('⚠️ [Callback] Erreur Preferences:', e);
+              });
+            }
+          } catch (e) {
+            console.log('⚠️ [Callback] Capacitor non disponible');
+          }
+          
+          // Attendre un peu pour que la sauvegarde soit effectuée
           setTimeout(() => {
-            window.location.href = deepLink;
-          }, 500);
+            // Essayer de fermer le navigateur
+            try {
+              if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                window.Capacitor.Plugins.Browser.close().then(() => {
+                  console.log('✅ [Callback] Navigateur fermé');
+                }).catch((e) => {
+                  console.log('⚠️ [Callback] Navigateur déjà fermé ou erreur:', e);
+                });
+              }
+            } catch (e) {
+              console.log('⚠️ [Callback] Erreur lors de la fermeture du navigateur:', e);
+            }
+          }, 1000);
         })();
       </script>
     </body>
