@@ -99,7 +99,8 @@ const allowedOrigins = [
   'https://appislamic.onrender.com',
   'http://localhost:5173',
   'http://localhost:3000',
-  "capacitor://localhost"
+  "capacitor://localhost",
+  "http://localhost",
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
 
@@ -350,15 +351,17 @@ app.get('/auth/mobile-callback', (req, res) => {
       <h2>Connexion réussie !</h2>
       <p>Fermeture en cours...</p>
       <script>
-        (function() {
+        (async function() {
           const token = '${escapedToken}';
           
           console.log('🔐 [Callback] Sauvegarde du token...');
+          console.log('🔐 [Callback] Token reçu:', token.substring(0, 30) + '...');
           
           // Sauvegarder dans localStorage
           try {
             localStorage.setItem('jwt', token);
-            console.log('✅ [Callback] Token sauvegardé dans localStorage');
+            const saved = localStorage.getItem('jwt');
+            console.log('✅ [Callback] Token sauvegardé dans localStorage:', saved ? saved.substring(0, 30) + '...' : 'ERREUR');
           } catch (e) {
             console.error('❌ [Callback] Erreur localStorage:', e);
           }
@@ -411,32 +414,39 @@ app.get('/auth/mobile-callback', (req, res) => {
               // Essayer de rediriger vers le deep link
               const deepLink = 'ummati://auth/callback?token=' + encodeURIComponent(token);
               console.log('🔗 [Callback] Tentative de redirection vers deep link:', deepLink.substring(0, 50) + '...');
-              window.location.href = deepLink;
               
-              // Si la redirection ne fonctionne pas après 2 secondes, essayer de fermer le navigateur
-              setTimeout(() => {
-                try {
-                  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                    window.Capacitor.Plugins.Browser.close().then(() => {
-                      console.log('✅ [Callback] Navigateur fermé');
-                    }).catch((e) => {
-                      console.log('⚠️ [Callback] Navigateur déjà fermé ou erreur:', e);
-                    });
-                  }
-                } catch (e) {
-                  console.log('⚠️ [Callback] Erreur lors de la fermeture du navigateur:', e);
-                }
-              }, 2000);
-            } catch (e) {
-              console.log('⚠️ [Callback] Erreur lors de la redirection vers deep link:', e);
-              // Essayer de fermer le navigateur directement
+              // Essayer de fermer le navigateur d'abord, puis rediriger
               try {
                 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                  window.Capacitor.Plugins.Browser.close();
+                  window.Capacitor.Plugins.Browser.close().then(() => {
+                    console.log('✅ [Callback] Navigateur fermé, redirection vers deep link...');
+                    // Après fermeture, essayer la redirection
+                    setTimeout(() => {
+                      try {
+                        window.location.href = deepLink;
+                      } catch (e) {
+                        console.log('⚠️ [Callback] Impossible de rediriger vers deep link:', e);
+                      }
+                    }, 300);
+                  }).catch((e) => {
+                    console.log('⚠️ [Callback] Erreur lors de la fermeture du navigateur, redirection directe:', e);
+                    // Si la fermeture échoue, essayer quand même la redirection
+                    try {
+                      window.location.href = deepLink;
+                    } catch (e2) {
+                      console.log('⚠️ [Callback] Impossible de rediriger vers deep link:', e2);
+                    }
+                  });
+                } else {
+                  // Si Capacitor n'est pas disponible, essayer quand même la redirection
+                  console.log('⚠️ [Callback] Capacitor non disponible, redirection directe vers deep link');
+                  window.location.href = deepLink;
                 }
-              } catch (e2) {
-                console.log('⚠️ [Callback] Impossible de fermer le navigateur:', e2);
+              } catch (e) {
+                console.log('⚠️ [Callback] Erreur lors de la fermeture/redirection:', e);
               }
+            } catch (e) {
+              console.log('⚠️ [Callback] Erreur lors de la redirection vers deep link:', e);
             }
           }, 500);
         })();
