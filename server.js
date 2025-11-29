@@ -245,15 +245,68 @@ app.get('/auth/google/callback',
     
     // Si c'est une app mobile, rediriger vers une page qui ferme le navigateur in-app
     if (isMobileApp) {
-      // Rediriger vers une page HTML qui ferme automatiquement le navigateur
-      // et envoie le token à l'app via localStorage (accessible depuis le navigateur in-app)
-      res.send(`
+      // Rediriger vers une page HTML simple qui affiche le token dans l'URL
+      // L'app détectera le token via browserPageLoaded
+      res.redirect(`${BACKEND_URL}/auth/mobile-callback?token=${token}`);
+    } else {
+      // Sinon, rediriger vers le frontend web
+      res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
+    }
+  }
+);
+
+// Route spéciale pour le callback mobile (page simple qui ferme le navigateur)
+app.get('/auth/mobile-callback', (req, res) => {
+  const token = req.query.token;
+  if (!token) {
+    return res.status(400).send('Token manquant');
+  }
+  
+  res.send(`
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Connexion réussie</title>
+          <script>
+            // Sauvegarder le token dans Capacitor Preferences
+            // Le navigateur in-app a accès à Capacitor via window.Capacitor
+            const token = '${token}';
+            
+            (async function() {
+              try {
+                // Essayer de sauvegarder dans Preferences
+                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
+                  await window.Capacitor.Plugins.Preferences.set({
+                    key: 'jwt',
+                    value: token
+                  });
+                  console.log('✅ Token sauvegardé dans Preferences');
+                }
+                
+                // Toujours sauvegarder dans localStorage aussi
+                localStorage.setItem('jwt', token);
+                console.log('✅ Token sauvegardé dans localStorage');
+                
+                // Attendre un peu puis fermer le navigateur
+                setTimeout(async () => {
+                  try {
+                    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                      await window.Capacitor.Plugins.Browser.close();
+                      console.log('✅ Navigateur fermé');
+                    }
+                  } catch (e) {
+                    console.log('Navigateur déjà fermé ou erreur:', e);
+                  }
+                }, 2000);
+              } catch (error) {
+                console.error('Erreur lors de la sauvegarde:', error);
+                // Fallback : localStorage seulement
+                localStorage.setItem('jwt', token);
+              }
+            })();
+          </script>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -292,18 +345,40 @@ app.get('/auth/google/callback',
             <p>Fermeture en cours...</p>
           </div>
           <script>
-            // Sauvegarder le token dans localStorage (accessible depuis le navigateur in-app)
-            localStorage.setItem('jwt', '${token}');
-            
-            // Attendre un peu puis fermer le navigateur
-            setTimeout(() => {
-              // Essayer de fermer le navigateur in-app
-              if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                window.Capacitor.Plugins.Browser.close();
+            (async function() {
+              const token = '${token}';
+              
+              try {
+                // Essayer d'utiliser Capacitor Preferences (partagé entre navigateur in-app et app)
+                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
+                  await window.Capacitor.Plugins.Preferences.set({
+                    key: 'jwt',
+                    value: token
+                  });
+                  console.log('✅ Token sauvegardé dans Preferences');
+                }
+                
+                // Toujours sauvegarder dans localStorage aussi (pour compatibilité)
+                localStorage.setItem('jwt', token);
+                console.log('✅ Token sauvegardé dans localStorage');
+                
+                // Attendre un peu puis fermer le navigateur
+                setTimeout(async () => {
+                  try {
+                    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                      await window.Capacitor.Plugins.Browser.close();
+                      console.log('✅ Navigateur fermé');
+                    }
+                  } catch (e) {
+                    console.log('Navigateur déjà fermé ou erreur:', e);
+                  }
+                }, 2000);
+              } catch (error) {
+                console.error('Erreur:', error);
+                // Fallback : localStorage seulement
+                localStorage.setItem('jwt', token);
               }
-              // Fallback : rediriger vers le deep link
-              window.location.href = 'ummati://auth/callback?token=${token}';
-            }, 1000);
+            })();
           </script>
         </body>
         </html>
