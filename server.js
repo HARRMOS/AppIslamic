@@ -99,6 +99,7 @@ const allowedOrigins = [
   'https://appislamic.onrender.com',
   'http://localhost:5173',
   'http://localhost:3000',
+  "capacitor://localhost"
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
 
