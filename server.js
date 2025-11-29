@@ -146,6 +146,10 @@ console.log('=== ENVIRONMENT DEBUG ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('RENDER:', process.env.RENDER);
 console.log('PORT:', process.env.PORT);
+console.log('BACKEND_URL:', BACKEND_URL);
+console.log('FRONTEND_URL:', FRONTEND_URL);
+console.log('isDevelopment:', isDevelopment);
+console.log('⚠️ NOTE: Les apps mobiles utiliseront TOUJOURS Render pour les callbacks OAuth');
 console.log('========================');
 
 
@@ -279,20 +283,24 @@ app.get('/auth/google/callback',
       state.includes('native');
     
     console.log('📱 [OAuth Callback] isMobileApp:', isMobileApp);
+    console.log('🔧 [OAuth Callback] BACKEND_URL actuel:', BACKEND_URL);
+    console.log('🔧 [OAuth Callback] Environnement:', isDevelopment ? 'DÉVELOPPEMENT (localhost)' : 'PRODUCTION (Render)');
     
     // Si c'est une app mobile, rediriger vers la page HTML qui sauvegarde le token
     // Cette page sauvegardera le token dans localStorage et fermera le navigateur
     // L'app détectera le token via appStateChange quand elle revient au premier plan
-    // IMPORTANT: Pour les apps mobiles, utiliser toujours l'URL Render (même si le backend tourne en local)
+    // IMPORTANT: Pour les apps mobiles, utiliser TOUJOURS l'URL Render (même si le backend tourne en local)
+    // car les apps mobiles ne peuvent pas accéder à localhost
     if (isMobileApp) {
       // Utiliser l'URL Render pour les apps mobiles (elles ne peuvent pas accéder à localhost)
       const renderUrl = 'https://appislamic.onrender.com';
       const mobileCallbackUrl = `${renderUrl}/auth/mobile-callback?token=${encodeURIComponent(token)}`;
+      console.log('🔗 [OAuth Callback] ⚠️ App mobile détectée - utilisation de Render même si backend en local');
       console.log('🔗 [OAuth Callback] Redirection vers mobile-callback (Render):', mobileCallbackUrl.substring(0, 80) + '...');
       res.redirect(mobileCallbackUrl);
     } else {
-      // Sinon, rediriger vers le frontend web
-      console.log('🌐 [OAuth Callback] Redirection vers frontend web');
+      // Sinon, rediriger vers le frontend web (peut être localhost ou Render selon l'environnement)
+      console.log('🌐 [OAuth Callback] App web - redirection vers frontend:', FRONTEND_URL);
       res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
     }
   }
