@@ -148,8 +148,7 @@ console.log('RENDER:', process.env.RENDER);
 console.log('PORT:', process.env.PORT);
 console.log('BACKEND_URL:', BACKEND_URL);
 console.log('FRONTEND_URL:', FRONTEND_URL);
-console.log('isDevelopment:', isDevelopment);
-console.log('⚠️ NOTE: Les apps mobiles utiliseront TOUJOURS Render pour les callbacks OAuth');
+console.log('⚠️ NOTE: Configuration utilise TOUJOURS Render (pas de localhost)');
 console.log('========================');
 
 
@@ -164,10 +163,10 @@ console.log('========================');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
-// Détection automatique de l'environnement de développement
-const isDevelopment = process.env.NODE_ENV !== 'production' || process.env.PORT === '3000';
-const BACKEND_URL = process.env.BACKEND_URL || (isDevelopment ? 'http://localhost:3000' : 'https://appislamic.onrender.com');
-const FRONTEND_URL = process.env.FRONTEND_URL || (isDevelopment ? 'http://localhost:5173' : 'https://ummati.pro');
+// Utiliser TOUJOURS Render (pas de localhost)
+const BACKEND_URL = process.env.BACKEND_URL || 'https://appislamic.onrender.com';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://ummati.pro';
+const isDevelopment = false; // Toujours en production (Render)
 
 // Vérifier que les variables Google OAuth sont définies
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -284,22 +283,18 @@ app.get('/auth/google/callback',
     
     console.log('📱 [OAuth Callback] isMobileApp:', isMobileApp);
     console.log('🔧 [OAuth Callback] BACKEND_URL actuel:', BACKEND_URL);
-    console.log('🔧 [OAuth Callback] Environnement:', isDevelopment ? 'DÉVELOPPEMENT (localhost)' : 'PRODUCTION (Render)');
+    console.log('🔧 [OAuth Callback] Toujours Render (pas de localhost)');
     
     // Si c'est une app mobile, rediriger vers la page HTML qui sauvegarde le token
     // Cette page sauvegardera le token dans localStorage et fermera le navigateur
     // L'app détectera le token via appStateChange quand elle revient au premier plan
-    // IMPORTANT: Pour les apps mobiles, utiliser TOUJOURS l'URL Render (même si le backend tourne en local)
-    // car les apps mobiles ne peuvent pas accéder à localhost
     if (isMobileApp) {
-      // Utiliser l'URL Render pour les apps mobiles (elles ne peuvent pas accéder à localhost)
-      const renderUrl = 'https://appislamic.onrender.com';
-      const mobileCallbackUrl = `${renderUrl}/auth/mobile-callback?token=${encodeURIComponent(token)}`;
-      console.log('🔗 [OAuth Callback] ⚠️ App mobile détectée - utilisation de Render même si backend en local');
-      console.log('🔗 [OAuth Callback] Redirection vers mobile-callback (Render):', mobileCallbackUrl.substring(0, 80) + '...');
+      // App mobile - rediriger vers la page HTML qui sauvegarde le token
+      const mobileCallbackUrl = `${BACKEND_URL}/auth/mobile-callback?token=${encodeURIComponent(token)}`;
+      console.log('🔗 [OAuth Callback] App mobile - redirection vers mobile-callback:', mobileCallbackUrl.substring(0, 80) + '...');
       res.redirect(mobileCallbackUrl);
     } else {
-      // Sinon, rediriger vers le frontend web (peut être localhost ou Render selon l'environnement)
+      // App web - rediriger vers le frontend
       console.log('🌐 [OAuth Callback] App web - redirection vers frontend:', FRONTEND_URL);
       res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
     }
