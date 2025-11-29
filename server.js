@@ -251,8 +251,8 @@ app.get('/auth/google/callback',
     
     // Si c'est une app mobile, rediriger vers une page qui ferme le navigateur in-app
     if (isMobileApp) {
-      // Rediriger vers une page HTML simple qui affiche le token dans l'URL
-      // L'app détectera le token via browserPageLoaded
+      // Rediriger vers une page HTML qui sauvegarde le token et redirige vers l'app
+      // L'app interceptera cette URL via appUrlOpen
       res.redirect(`${BACKEND_URL}/auth/mobile-callback?token=${token}`);
     } else {
       // Sinon, rediriger vers le frontend web
@@ -261,121 +261,62 @@ app.get('/auth/google/callback',
   }
 );
 
-// Route spéciale pour le callback mobile (page simple qui ferme le navigateur)
+// Route spéciale pour le callback mobile
+// L'app détecte cette URL via browserPageLoaded et extrait le token directement
+// Pas besoin de page HTML complexe, juste une page simple qui confirme la connexion
 app.get('/auth/mobile-callback', (req, res) => {
   const token = req.query.token;
   if (!token) {
     return res.status(400).send('Token manquant');
   }
   
-  // Échapper le token pour éviter les problèmes de syntaxe dans le template string
-  const escapedToken = String(token).replace(/'/g, "\\'").replace(/\\/g, "\\\\");
-  
+  // Page HTML très simple - l'app détectera l'URL et extraira le token automatiquement
   res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Connexion réussie</title>
-          <style>
-            body {
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              justify-content: center;
-              min-height: 100vh;
-              margin: 0;
-              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-              color: white;
-            }
-            .success {
-              text-align: center;
-              padding: 2rem;
-            }
-            .spinner {
-              border: 4px solid rgba(255,255,255,0.3);
-              border-top: 4px solid white;
-              border-radius: 50%;
-              width: 40px;
-              height: 40px;
-              animation: spin 1s linear infinite;
-              margin: 0 auto 1rem;
-            }
-            @keyframes spin {
-              0% { transform: rotate(0deg); }
-              100% { transform: rotate(360deg); }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="success">
-            <div class="spinner"></div>
-            <h2>Connexion réussie !</h2>
-            <p>Fermeture en cours...</p>
-          </div>
-          <script>
-            (async function() {
-              const token = '${escapedToken}';
-              
-              console.log('🔐 Sauvegarde du token...');
-              
-              // Sauvegarder dans localStorage (partagé entre navigateur in-app et app principale dans Capacitor)
-              localStorage.setItem('jwt', token);
-              console.log('✅ Token sauvegardé dans localStorage:', token.substring(0, 20) + '...');
-              
-              // Essayer aussi de sauvegarder dans Preferences si disponible
-              // IMPORTANT: Dans Capacitor, le navigateur in-app peut accéder à Capacitor via window.Capacitor
-              try {
-                // Essayer plusieurs façons d'accéder à Capacitor
-                let capacitor = window.Capacitor || (window as any).Capacitor;
-                
-                if (capacitor && capacitor.Plugins && capacitor.Plugins.Preferences) {
-                  await capacitor.Plugins.Preferences.set({
-                    key: 'jwt',
-                    value: token
-                  });
-                  console.log('✅ Token sauvegardé dans Preferences via Capacitor');
-                } else {
-                  console.log('⚠️ Capacitor Preferences non disponible dans le navigateur in-app');
-                  console.log('ℹ️ Le token est dans localStorage. L\'app le détectera via appStateChange.');
-                }
-              } catch (e) {
-                console.log('⚠️ Erreur lors de la sauvegarde dans Preferences:', e);
-                console.log('ℹ️ Le token est dans localStorage. L\'app le détectera via appStateChange.');
-              }
-              
-              // Attendre un peu pour que localStorage soit bien sauvegardé
-              await new Promise(resolve => setTimeout(resolve, 500));
-              
-              // Essayer de fermer le navigateur plusieurs fois
-              let closed = false;
-              for (let i = 0; i < 5; i++) {
-                try {
-                  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                    await window.Capacitor.Plugins.Browser.close();
-                    console.log('✅ Navigateur fermé (tentative ' + (i + 1) + ')');
-                    closed = true;
-                    break;
-                  }
-                } catch (e) {
-                  console.log('⚠️ Tentative ' + (i + 1) + ' de fermeture échouée:', e);
-                }
-                await new Promise(resolve => setTimeout(resolve, 500));
-              }
-              
-              if (!closed) {
-                console.log('⚠️ Impossible de fermer le navigateur automatiquement');
-                console.log('ℹ️ Le token est sauvegardé. Vous pouvez fermer cette page manuellement.');
-                // Afficher un message à l'utilisateur
-                document.querySelector('.success p').textContent = 'Token sauvegardé ! Vous pouvez fermer cette page.';
-              }
-            })();
-          </script>
-        </body>
-        </html>
-      `);
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Connexion réussie</title>
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          min-height: 100vh;
+          margin: 0;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          text-align: center;
+          padding: 2rem;
+        }
+        .spinner {
+          border: 4px solid rgba(255,255,255,0.3);
+          border-top: 4px solid white;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin: 0 auto 1rem;
+        }
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="spinner"></div>
+      <h2>Connexion réussie !</h2>
+      <p>Fermeture en cours...</p>
+      <p style="font-size: 0.9rem; opacity: 0.8; margin-top: 1rem;">
+        L'application va se fermer automatiquement.
+      </p>
+    </body>
+    </html>
+  `);
 });
 
 // Route de déconnexion
