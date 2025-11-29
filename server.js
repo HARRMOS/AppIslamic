@@ -339,19 +339,29 @@ app.get('/auth/mobile-callback', (req, res) => {
               }
               
               // Attendre un peu pour que localStorage soit bien sauvegardé
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              await new Promise(resolve => setTimeout(resolve, 500));
               
-              // Essayer de fermer le navigateur
-              try {
-                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                  await window.Capacitor.Plugins.Browser.close();
-                  console.log('✅ Navigateur fermé');
-                } else {
-                  console.log('⚠️ Capacitor Browser non disponible, l\'app détectera le token automatiquement');
+              // Essayer de fermer le navigateur plusieurs fois
+              let closed = false;
+              for (let i = 0; i < 5; i++) {
+                try {
+                  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                    await window.Capacitor.Plugins.Browser.close();
+                    console.log('✅ Navigateur fermé (tentative ' + (i + 1) + ')');
+                    closed = true;
+                    break;
+                  }
+                } catch (e) {
+                  console.log('⚠️ Tentative ' + (i + 1) + ' de fermeture échouée:', e);
                 }
-              } catch (e) {
-                console.log('⚠️ Erreur lors de la fermeture du navigateur (normal):', e);
-                // L'app détectera le token dans localStorage automatiquement
+                await new Promise(resolve => setTimeout(resolve, 500));
+              }
+              
+              if (!closed) {
+                console.log('⚠️ Impossible de fermer le navigateur automatiquement');
+                console.log('ℹ️ Le token est sauvegardé. Vous pouvez fermer cette page manuellement.');
+                // Afficher un message à l'utilisateur
+                document.querySelector('.success p').textContent = 'Token sauvegardé ! Vous pouvez fermer cette page.';
               }
             })();
           </script>
