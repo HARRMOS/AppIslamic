@@ -150,8 +150,10 @@ console.log('========================');
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
-const BACKEND_URL = process.env.BACKEND_URL || 'https://appislamic.onrender.com';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://ummati.pro';
+// Détection automatique de l'environnement de développement
+const isDevelopment = process.env.NODE_ENV !== 'production' || process.env.PORT === '3000';
+const BACKEND_URL = process.env.BACKEND_URL || (isDevelopment ? 'http://localhost:3000' : 'https://appislamic.onrender.com');
+const FRONTEND_URL = process.env.FRONTEND_URL || (isDevelopment ? 'http://localhost:5173' : 'https://ummati.pro');
 
 // Vérifier que les variables Google OAuth sont définies
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -185,10 +187,15 @@ app.use(passport.initialize());
 
 // Fonction utilitaire pour ajouter un message dans MySQL
 async function addMessageMySQL(userId, botId, conversationId, sender, text, context = null) {
-  await mysqlPool.query(
-    'INSERT INTO messages (userId, botId, conversationId, sender, text, context) VALUES (?, ?, ?, ?, ?, ?)',
-    [userId, botId, conversationId, sender, text, context]
-  );
+  try {
+    await mysqlPool.query(
+      'INSERT INTO messages (userId, botId, conversationId, sender, text, context) VALUES (?, ?, ?, ?, ?, ?)',
+      [userId, botId, conversationId, sender, text, context ? JSON.stringify(context) : null]
+    );
+  } catch (error) {
+    console.error('Erreur lors de l\'ajout du message MySQL:', error);
+    throw error;
+  }
 }
 
 // Désactive le cache pour la route /auth/status (important pour Safari/cookies)
@@ -226,9 +233,85 @@ app.get('/auth/google/callback',
       JWT_SECRET,
       { expiresIn: '7d' }
     );
-    // Rediriger vers le frontend avec le token en query
-    const frontendUrl = process.env.FRONTEND_URL || 'https://ummati.pro';
-    res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+    
+    // Détecter si la requête vient d'une app mobile (User-Agent ou Referer)
+    const userAgent = req.headers['user-agent'] || '';
+    const referer = req.headers['referer'] || '';
+    const isMobileApp = userAgent.includes('Capacitor') || 
+                        userAgent.includes('Ummati') ||
+                        referer.includes('capacitor://') ||
+                        referer.includes('ummati://') ||
+                        userAgent.includes('Mobile');
+    
+    // Si c'est une app mobile, rediriger vers une page qui ferme le navigateur in-app
+    if (isMobileApp) {
+      // Rediriger vers une page HTML qui ferme automatiquement le navigateur
+      // et envoie le token à l'app via localStorage (accessible depuis le navigateur in-app)
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Connexion réussie</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              margin: 0;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+            }
+            .success {
+              text-align: center;
+              padding: 2rem;
+            }
+            .spinner {
+              border: 4px solid rgba(255,255,255,0.3);
+              border-top: 4px solid white;
+              border-radius: 50%;
+              width: 40px;
+              height: 40px;
+              animation: spin 1s linear infinite;
+              margin: 0 auto 1rem;
+            }
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="success">
+            <div class="spinner"></div>
+            <h2>Connexion réussie !</h2>
+            <p>Fermeture en cours...</p>
+          </div>
+          <script>
+            // Sauvegarder le token dans localStorage (accessible depuis le navigateur in-app)
+            localStorage.setItem('jwt', '${token}');
+            
+            // Attendre un peu puis fermer le navigateur
+            setTimeout(() => {
+              // Essayer de fermer le navigateur in-app
+              if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                window.Capacitor.Plugins.Browser.close();
+              }
+              // Fallback : rediriger vers le deep link
+              window.location.href = 'ummati://auth/callback?token=${token}';
+            }, 1000);
+          </script>
+        </body>
+        </html>
+      `);
+    } else {
+      // Sinon, rediriger vers le frontend web
+      res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
+    }
   }
 );
 
@@ -847,11 +930,14 @@ app.post('/api/chat', authenticateJWT, async (req, res) => {
       console.log('Nouvelle conversation créée avec ID (MySQL):', currentConversationId);
     } catch (convError) {
       console.error('Erreur lors de la création de la conversation (MySQL):', convError);
-      return res.status(500).json({ message: 'Erreur lors de la création de la conversation.' });
+      return res.status(500).json({ 
+        message: 'Erreur lors de la création de la conversation.',
+        details: convError.message || 'Erreur inconnue'
+      });
     }
   } else if (title && currentConversationId > 0) {
     try {
-      await updateConversationTitle(userId, usedBotId, Number(conversationId), title);
+      await updateConversationTitleMySQL(userId, usedBotId, Number(conversationId), title);
       console.log(`Titre de la conversation ${currentConversationId} mis à jour.`);
     } catch (titleUpdateError) {
       console.error(`Erreur lors de la mise à jour du titre de la conversation ${currentConversationId}:`, titleUpdateError);
@@ -864,7 +950,13 @@ app.post('/api/chat', authenticateJWT, async (req, res) => {
     const prompt = `Tu es un assistant islamique bienveillant. Tu expliques l'islam avec douceur, sagesse et respect. Tu cites toujours tes sources : versets du Coran (avec numéro de sourate et verset), hadiths authentiques (avec référence), ou avis de savants connus. Si tu ne connais pas la réponse, dis-le avec bienveillance. Tu t'exprimes comme un ami proche, rassurant et sincère. Et tu ne réponds à aucune question qui n'est pas islamique.`;
 
     // Récupérer les 10 derniers messages pour le contexte de cette conversation
-    const conversationHistory = await getMessagesForUserBot(userId, usedBotId, currentConversationId, 10);
+    let conversationHistory = [];
+    try {
+      conversationHistory = await getMessagesForUserBot(userId, usedBotId, currentConversationId, 10);
+    } catch (historyError) {
+      console.error('Erreur lors de la récupération de l\'historique, on continue sans historique:', historyError);
+      conversationHistory = []; // On continue sans historique si erreur
+    }
 
     const messagesForGpt = [
       { role: "system", content: prompt }
@@ -881,20 +973,35 @@ app.post('/api/chat', authenticateJWT, async (req, res) => {
     // Ajouter le message actuel de l'utilisateur
     messagesForGpt.push({ role: "user", content: message });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo", // Utilisation d'un modèle plus récent
-      messages: messagesForGpt,
-      temperature: 0.7,
-      max_tokens: 500
-    });
+    let reply;
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-3.5-turbo", // Utilisation d'un modèle plus récent
+        messages: messagesForGpt,
+        temperature: 0.7,
+        max_tokens: 500
+      });
+      reply = completion.choices[0].message.content;
+    } catch (openaiError) {
+      console.error('Erreur OpenAI:', openaiError);
+      throw new Error(`Erreur lors de la génération de la réponse: ${openaiError.message || 'Erreur inconnue'}`);
+    }
 
-    const reply = completion.choices[0].message.content;
-
-    await addMessageMySQL(userId, usedBotId, currentConversationId, 'user', message);
-    await addMessageMySQL(userId, usedBotId, currentConversationId, 'bot', reply);
+    try {
+      await addMessageMySQL(userId, usedBotId, currentConversationId, 'user', message);
+      await addMessageMySQL(userId, usedBotId, currentConversationId, 'bot', reply);
+    } catch (msgError) {
+      console.error('Erreur lors de la sauvegarde des messages:', msgError);
+      // On continue quand même car le message a été généré
+    }
 
     // Incrémenter le compteur de messages chatbot
-    incrementChatbotMessagesUsed(userId);
+    try {
+      await incrementChatbotMessagesUsed(userId);
+    } catch (quotaError) {
+      console.error('Erreur lors de l\'incrémentation du quota:', quotaError);
+      // On continue quand même
+    }
 
     res.status(200).json({ message: reply });
 
@@ -904,7 +1011,10 @@ app.post('/api/chat', authenticateJWT, async (req, res) => {
     if (error.message && error.message.includes('Message limit reached')) {
        res.status(403).json({ message: error.message });
     } else {
-       res.status(500).json({ message: 'Une erreur est survenue lors de l\'interaction avec le bot' });
+       res.status(500).json({ 
+         message: 'Une erreur est survenue lors de l\'interaction avec le bot',
+         details: error.message || 'Erreur inconnue'
+       });
     }
   }
 });
@@ -1314,13 +1424,61 @@ app.put('/api/user/preferences', authenticateJWT, async (req, res) => {
 });
 
 // Route pour récupérer l'historique des messages d'une conversation (MySQL)
-app.get('/api/conversations/:conversationId/messages', authenticateJWT, async (req, res) => {
-  const { conversationId } = req.params;
+// Route pour récupérer une conversation spécifique par son ID
+app.get('/api/conversations/:id', authenticateJWT, async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
   try {
-    // Optionnel : vérifier que la conversation appartient à l'utilisateur
-    const [convs] = await mysqlPool.execute('SELECT * FROM conversations WHERE id = ? AND userId = ?', [conversationId, req.user.id]);
-    if (!convs.length) {
-      return res.status(403).json({ message: 'Accès interdit à cette conversation.' });
+    const [rows] = await mysqlPool.execute(
+      'SELECT * FROM conversations WHERE id = ? AND userId = ?',
+      [id, userId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'Conversation non trouvée' });
+    }
+    res.json(rows[0]);
+  } catch (error) {
+    console.error('Erreur lors de la récupération de la conversation:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération de la conversation', details: error.message });
+  }
+});
+
+app.get('/api/conversations/:conversationId/messages', authenticateJWT, async (req, res) => {
+  const conversationId = Number(req.params.conversationId);
+  const userId = req.user.id;
+  
+  if (isNaN(conversationId)) {
+    return res.status(400).json({ 
+      message: 'ID de conversation invalide',
+      details: `L'ID "${req.params.conversationId}" n'est pas un nombre valide.`
+    });
+  }
+
+  try {
+    // Vérifier que la conversation appartient à l'utilisateur
+    const [convs] = await mysqlPool.execute(
+      'SELECT * FROM conversations WHERE id = ? AND userId = ?', 
+      [conversationId, userId]
+    );
+    if (!convs || convs.length === 0) {
+      // Vérifier si la conversation existe mais appartient à un autre utilisateur
+      const [allConvs] = await mysqlPool.execute(
+        'SELECT * FROM conversations WHERE id = ?', 
+        [conversationId]
+      );
+      if (allConvs && allConvs.length > 0) {
+        console.log(`Conversation ${conversationId} existe mais appartient à l'utilisateur ${allConvs[0].userId}, pas à ${userId}`);
+        return res.status(403).json({ 
+          message: 'Accès interdit à cette conversation.',
+          details: `La conversation ${conversationId} ne vous appartient pas.`
+        });
+      } else {
+        console.log(`Conversation ${conversationId} n'existe pas`);
+        return res.status(404).json({ 
+          message: 'Conversation non trouvée',
+          details: `La conversation ${conversationId} n'existe pas.`
+        });
+      }
     }
     const [rows] = await mysqlPool.execute(
       'SELECT * FROM messages WHERE conversationId = ? ORDER BY timestamp ASC',
@@ -1328,7 +1486,11 @@ app.get('/api/conversations/:conversationId/messages', authenticateJWT, async (r
     );
     res.json(rows);
   } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de la récupération des messages' });
+    console.error('Erreur lors de la récupération des messages:', error);
+    res.status(500).json({ 
+      message: 'Erreur lors de la récupération des messages', 
+      details: error.message || 'Erreur inconnue'
+    });
   }
 });
 
@@ -1345,7 +1507,8 @@ app.get('/api/user/:userId/messages', authenticateJWT, async (req, res) => {
     );
     res.json(rows);
   } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de la récupération des messages.' });
+    console.error('Erreur lors de la récupération des messages:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération des messages', details: error.message });
   }
 });
 
@@ -1361,7 +1524,8 @@ app.get('/api/user/:userId/conversations', authenticateJWT, async (req, res) => 
     );
     res.json(rows);
   } catch (error) {
-    res.status(500).json({ message: 'Erreur lors de la récupération des conversations.' });
+    console.error('Erreur lors de la récupération des conversations:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération des conversations', details: error.message });
   }
 });
 
@@ -1465,6 +1629,67 @@ app.post('/admin/bots/:botId/toggle', authenticateJWT, requireAdmin, async (req,
   }
 });
 // Statistiques globales
+// ===================== ROUTES NASHEEDS =====================
+// Récupérer tous les nasheeds actifs
+app.get('/api/nasheeds', authenticateJWT, async (req, res) => {
+  try {
+    const [rows] = await mysqlPool.execute(
+      'SELECT * FROM nasheeds WHERE is_active = TRUE ORDER BY created_at DESC'
+    );
+    res.json({ nasheeds: rows });
+  } catch (error) {
+    console.error('Erreur récupération nasheeds:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// Ajouter un nasheed (admin seulement)
+app.post('/api/nasheeds', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { title, artist, audio_url, cover_image_url, description, duration, category, language } = req.body;
+    if (!title || !audio_url) {
+      return res.status(400).json({ message: 'Titre et URL audio sont requis.' });
+    }
+    const userId = req.user.id;
+    const [result] = await mysqlPool.execute(
+      'INSERT INTO nasheeds (title, artist, audio_url, cover_image_url, description, duration, category, language, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [title, artist || null, audio_url, cover_image_url || null, description || null, duration || null, category || 'general', language || 'ar', userId]
+    );
+    res.json({ success: true, id: result.insertId, message: 'Nasheed ajouté avec succès' });
+  } catch (error) {
+    console.error('Erreur ajout nasheed:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// Modifier un nasheed (admin seulement)
+app.put('/api/nasheeds/:id', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, artist, audio_url, cover_image_url, description, duration, category, language, is_active } = req.body;
+    await mysqlPool.execute(
+      'UPDATE nasheeds SET title = ?, artist = ?, audio_url = ?, cover_image_url = ?, description = ?, duration = ?, category = ?, language = ?, is_active = ? WHERE id = ?',
+      [title, artist, audio_url, cover_image_url, description, duration, category, language, is_active !== undefined ? is_active : true, id]
+    );
+    res.json({ success: true, message: 'Nasheed modifié avec succès' });
+  } catch (error) {
+    console.error('Erreur modification nasheed:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
+// Supprimer un nasheed (admin seulement)
+app.delete('/api/nasheeds/:id', authenticateJWT, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await mysqlPool.execute('DELETE FROM nasheeds WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Nasheed supprimé avec succès' });
+  } catch (error) {
+    console.error('Erreur suppression nasheed:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+});
+
 app.get('/admin/stats', authenticateJWT, requireAdmin, async (req, res) => {
   try {
     const [[{ users }]] = await mysqlPool.query('SELECT COUNT(*) AS users FROM users');
