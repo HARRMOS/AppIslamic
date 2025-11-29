@@ -313,8 +313,9 @@ app.get('/auth/mobile-callback', (req, res) => {
             (async function() {
               const token = '${escapedToken}';
               
+              // Méthode 1 : Essayer de sauvegarder dans Preferences via Capacitor
+              // (peut ne pas fonctionner si Capacitor n'est pas accessible)
               try {
-                // Essayer d'utiliser Capacitor Preferences (partagé entre navigateur in-app et app)
                 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
                   await window.Capacitor.Plugins.Preferences.set({
                     key: 'jwt',
@@ -322,26 +323,32 @@ app.get('/auth/mobile-callback', (req, res) => {
                   });
                   console.log('✅ Token sauvegardé dans Preferences');
                 }
+              } catch (e) {
+                console.log('Capacitor Preferences non disponible:', e);
+              }
+              
+              // Méthode 2 : Sauvegarder dans localStorage (partagé avec l'app principale)
+              localStorage.setItem('jwt', token);
+              console.log('✅ Token sauvegardé dans localStorage');
+              
+              // Méthode 3 : Essayer de rediriger vers un deep link que l'app peut intercepter
+              // L'app écoute les URLs via appUrlOpen
+              try {
+                // Attendre un peu pour que localStorage soit sauvegardé
+                await new Promise(resolve => setTimeout(resolve, 500));
                 
-                // Toujours sauvegarder dans localStorage aussi (pour compatibilité)
-                localStorage.setItem('jwt', token);
-                console.log('✅ Token sauvegardé dans localStorage');
-                
-                // Attendre un peu puis fermer le navigateur
-                setTimeout(async () => {
-                  try {
-                    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                      await window.Capacitor.Plugins.Browser.close();
-                      console.log('✅ Navigateur fermé');
-                    }
-                  } catch (e) {
-                    console.log('Navigateur déjà fermé ou erreur:', e);
-                  }
-                }, 2000);
-              } catch (error) {
-                console.error('Erreur:', error);
-                // Fallback : localStorage seulement
-                localStorage.setItem('jwt', token);
+                // Essayer de fermer le navigateur
+                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                  await window.Capacitor.Plugins.Browser.close();
+                  console.log('✅ Navigateur fermé');
+                } else {
+                  // Fallback : rediriger vers un deep link
+                  window.location.href = 'ummati://auth/callback?token=' + encodeURIComponent(token);
+                }
+              } catch (e) {
+                console.log('Erreur lors de la fermeture:', e);
+                // Fallback : rediriger vers un deep link
+                window.location.href = 'ummati://auth/callback?token=' + encodeURIComponent(token);
               }
             })();
           </script>
