@@ -278,12 +278,13 @@ app.get('/auth/google/callback',
     
     console.log('📱 [OAuth Callback] isMobileApp:', isMobileApp);
     
-    // Si c'est une app mobile, rediriger directement vers le deep link
-    // L'app interceptera cette URL via appUrlOpen
+    // Si c'est une app mobile, rediriger vers la page HTML qui sauvegarde le token
+    // Cette page sauvegardera le token dans localStorage et fermera le navigateur
+    // L'app détectera le token via appStateChange quand elle revient au premier plan
     if (isMobileApp) {
-      const deepLink = `ummati://auth/callback?token=${encodeURIComponent(token)}`;
-      console.log('🔗 [OAuth Callback] Redirection vers deep link:', deepLink.substring(0, 50) + '...');
-      res.redirect(deepLink);
+      const mobileCallbackUrl = `${BACKEND_URL}/auth/mobile-callback?token=${encodeURIComponent(token)}`;
+      console.log('🔗 [OAuth Callback] Redirection vers mobile-callback:', mobileCallbackUrl.substring(0, 80) + '...');
+      res.redirect(mobileCallbackUrl);
     } else {
       // Sinon, rediriger vers le frontend web
       console.log('🌐 [OAuth Callback] Redirection vers frontend web');
@@ -399,21 +400,41 @@ app.get('/auth/mobile-callback', (req, res) => {
             console.log('ℹ️ [Callback] L\'app devra vérifier localStorage via appStateChange');
           }
           
-          // Attendre un peu pour que la sauvegarde soit effectuée
+          // Essayer aussi de rediriger vers le deep link pour déclencher appUrlOpen
+          // Si ça ne fonctionne pas, appStateChange détectera le token dans localStorage
           setTimeout(() => {
-            // Essayer de fermer le navigateur
             try {
-              if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                window.Capacitor.Plugins.Browser.close().then(() => {
-                  console.log('✅ [Callback] Navigateur fermé');
-                }).catch((e) => {
-                  console.log('⚠️ [Callback] Navigateur déjà fermé ou erreur:', e);
-                });
-              }
+              // Essayer de rediriger vers le deep link
+              const deepLink = 'ummati://auth/callback?token=' + encodeURIComponent(token);
+              console.log('🔗 [Callback] Tentative de redirection vers deep link:', deepLink.substring(0, 50) + '...');
+              window.location.href = deepLink;
+              
+              // Si la redirection ne fonctionne pas après 2 secondes, essayer de fermer le navigateur
+              setTimeout(() => {
+                try {
+                  if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                    window.Capacitor.Plugins.Browser.close().then(() => {
+                      console.log('✅ [Callback] Navigateur fermé');
+                    }).catch((e) => {
+                      console.log('⚠️ [Callback] Navigateur déjà fermé ou erreur:', e);
+                    });
+                  }
+                } catch (e) {
+                  console.log('⚠️ [Callback] Erreur lors de la fermeture du navigateur:', e);
+                }
+              }, 2000);
             } catch (e) {
-              console.log('⚠️ [Callback] Erreur lors de la fermeture du navigateur:', e);
+              console.log('⚠️ [Callback] Erreur lors de la redirection vers deep link:', e);
+              // Essayer de fermer le navigateur directement
+              try {
+                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                  window.Capacitor.Plugins.Browser.close();
+                }
+              } catch (e2) {
+                console.log('⚠️ [Callback] Impossible de fermer le navigateur:', e2);
+              }
             }
-          }, 1000);
+          }, 500);
         })();
       </script>
     </body>
