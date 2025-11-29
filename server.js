@@ -185,6 +185,15 @@ passport.use(new GoogleStrategy({
 
 app.use(passport.initialize());
 
+// Endpoint de health check pour vérifier la connectivité
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    server: 'running'
+  });
+});
+
 // Initialiser Passport et la gestion de session
 
 
