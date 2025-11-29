@@ -141,6 +141,16 @@ app.use(cors(corsOptions));
 // Ajouter le middleware pour parser le JSON
 app.use(express.json());
 
+// Configure Google OAuth strategy
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+
+// Utiliser TOUJOURS Render (pas de localhost)
+const BACKEND_URL = process.env.BACKEND_URL || 'https://appislamic.onrender.com';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://ummati.pro';
+const isDevelopment = false; // Toujours en production (Render)
+
 // Debug de l'environnement
 console.log('=== ENVIRONMENT DEBUG ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
@@ -156,17 +166,6 @@ console.log('========================');
 
 
 // Ajout de logs pour la configuration de session
-
-
-// Configure Google OAuth strategy
-
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
-// Utiliser TOUJOURS Render (pas de localhost)
-const BACKEND_URL = process.env.BACKEND_URL || 'https://appislamic.onrender.com';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://ummati.pro';
-const isDevelopment = false; // Toujours en production (Render)
 
 // Vérifier que les variables Google OAuth sont définies
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
