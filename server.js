@@ -262,6 +262,9 @@ app.get('/auth/mobile-callback', (req, res) => {
     return res.status(400).send('Token manquant');
   }
   
+  // Échapper le token pour éviter les problèmes de syntaxe dans le template string
+  const escapedToken = String(token).replace(/'/g, "\\'").replace(/\\/g, "\\\\");
+  
   res.send(`
         <!DOCTYPE html>
         <html>
@@ -269,44 +272,6 @@ app.get('/auth/mobile-callback', (req, res) => {
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>Connexion réussie</title>
-          <script>
-            // Sauvegarder le token dans Capacitor Preferences
-            // Le navigateur in-app a accès à Capacitor via window.Capacitor
-            const token = '${token}';
-            
-            (async function() {
-              try {
-                // Essayer de sauvegarder dans Preferences
-                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
-                  await window.Capacitor.Plugins.Preferences.set({
-                    key: 'jwt',
-                    value: token
-                  });
-                  console.log('✅ Token sauvegardé dans Preferences');
-                }
-                
-                // Toujours sauvegarder dans localStorage aussi
-                localStorage.setItem('jwt', token);
-                console.log('✅ Token sauvegardé dans localStorage');
-                
-                // Attendre un peu puis fermer le navigateur
-                setTimeout(async () => {
-                  try {
-                    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                      await window.Capacitor.Plugins.Browser.close();
-                      console.log('✅ Navigateur fermé');
-                    }
-                  } catch (e) {
-                    console.log('Navigateur déjà fermé ou erreur:', e);
-                  }
-                }, 2000);
-              } catch (error) {
-                console.error('Erreur lors de la sauvegarde:', error);
-                // Fallback : localStorage seulement
-                localStorage.setItem('jwt', token);
-              }
-            })();
-          </script>
           <style>
             body {
               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -346,7 +311,7 @@ app.get('/auth/mobile-callback', (req, res) => {
           </div>
           <script>
             (async function() {
-              const token = '${token}';
+              const token = '${escapedToken}';
               
               try {
                 // Essayer d'utiliser Capacitor Preferences (partagé entre navigateur in-app et app)
@@ -383,12 +348,7 @@ app.get('/auth/mobile-callback', (req, res) => {
         </body>
         </html>
       `);
-    } else {
-      // Sinon, rediriger vers le frontend web
-      res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
-    }
-  }
-);
+});
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
