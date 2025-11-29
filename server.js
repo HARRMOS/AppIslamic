@@ -326,16 +326,24 @@ app.get('/auth/mobile-callback', (req, res) => {
               console.log('✅ Token sauvegardé dans localStorage:', token.substring(0, 20) + '...');
               
               // Essayer aussi de sauvegarder dans Preferences si disponible
+              // IMPORTANT: Dans Capacitor, le navigateur in-app peut accéder à Capacitor via window.Capacitor
               try {
-                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
-                  await window.Capacitor.Plugins.Preferences.set({
+                // Essayer plusieurs façons d'accéder à Capacitor
+                let capacitor = window.Capacitor || (window as any).Capacitor;
+                
+                if (capacitor && capacitor.Plugins && capacitor.Plugins.Preferences) {
+                  await capacitor.Plugins.Preferences.set({
                     key: 'jwt',
                     value: token
                   });
-                  console.log('✅ Token sauvegardé dans Preferences');
+                  console.log('✅ Token sauvegardé dans Preferences via Capacitor');
+                } else {
+                  console.log('⚠️ Capacitor Preferences non disponible dans le navigateur in-app');
+                  console.log('ℹ️ Le token est dans localStorage. L\'app le détectera via appStateChange.');
                 }
               } catch (e) {
-                console.log('⚠️ Capacitor Preferences non disponible (normal dans navigateur in-app)');
+                console.log('⚠️ Erreur lors de la sauvegarde dans Preferences:', e);
+                console.log('ℹ️ Le token est dans localStorage. L\'app le détectera via appStateChange.');
               }
               
               // Attendre un peu pour que localStorage soit bien sauvegardé
