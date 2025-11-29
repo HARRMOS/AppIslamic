@@ -327,19 +327,44 @@ app.get('/auth/mobile-callback', (req, res) => {
           }
           
           // Essayer de sauvegarder dans Preferences via Capacitor (si disponible)
+          // IMPORTANT: Dans le navigateur in-app, Capacitor peut ne pas être disponible
+          // On va essayer plusieurs méthodes
+          let savedInPreferences = false;
+          
+          // Méthode 1: Via window.Capacitor (si disponible dans le navigateur in-app)
           try {
             if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
-              window.Capacitor.Plugins.Preferences.set({
+              await window.Capacitor.Plugins.Preferences.set({
                 key: 'jwt',
                 value: token
-              }).then(() => {
-                console.log('✅ [Callback] Token sauvegardé dans Preferences');
-              }).catch((e) => {
-                console.log('⚠️ [Callback] Erreur Preferences:', e);
               });
+              console.log('✅ [Callback] Token sauvegardé dans Preferences (méthode 1)');
+              savedInPreferences = true;
             }
           } catch (e) {
-            console.log('⚠️ [Callback] Capacitor non disponible');
+            console.log('⚠️ [Callback] Méthode 1 échouée:', e);
+          }
+          
+          // Méthode 2: Via Capacitor global (si disponible)
+          if (!savedInPreferences) {
+            try {
+              if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.Preferences) {
+                await Capacitor.Plugins.Preferences.set({
+                  key: 'jwt',
+                  value: token
+                });
+                console.log('✅ [Callback] Token sauvegardé dans Preferences (méthode 2)');
+                savedInPreferences = true;
+              }
+            } catch (e) {
+              console.log('⚠️ [Callback] Méthode 2 échouée:', e);
+            }
+          }
+          
+          // Si on n'a pas pu sauvegarder dans Preferences, on affiche un message
+          if (!savedInPreferences) {
+            console.log('⚠️ [Callback] Impossible de sauvegarder dans Preferences - le token est dans localStorage uniquement');
+            console.log('ℹ️ [Callback] L\'app devra vérifier localStorage via appStateChange');
           }
           
           // Attendre un peu pour que la sauvegarde soit effectuée
