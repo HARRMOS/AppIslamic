@@ -118,7 +118,13 @@ const corsOptions = {
   origin: function (origin, callback) {
     console.log('CORS origin:', origin);
     // Autorise les requêtes sans origin (ex: mobile, redirection OAuth)
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Autorise aussi les origines Capacitor (capacitor://localhost, capacitor://, etc.)
+    if (!origin || 
+        allowedOrigins.includes(origin) ||
+        origin.startsWith('capacitor://') ||
+        origin.startsWith('ionic://') ||
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1')) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
