@@ -151,8 +151,15 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
 // Détection automatique de l'environnement de développement
 const isDevelopment = process.env.NODE_ENV !== 'production' || process.env.PORT === '3000';
-const BACKEND_URL = process.env.BACKEND_URL || 'https://appislamic.onrender.com';
-const FRONTEND_URL = process.env.FRONTEND_URL || (isDevelopment ? 'http://localhost:5173' : 'https://ummati.pro');
+
+// Fonction pour nettoyer les URLs (enlever les slashes à la fin)
+const cleanUrl = (url) => {
+  if (!url) return url;
+  return url.toString().replace(/\/+$/, '');
+};
+
+const BACKEND_URL = cleanUrl(process.env.BACKEND_URL || 'https://appislamic.onrender.com');
+const FRONTEND_URL = cleanUrl(process.env.FRONTEND_URL || (isDevelopment ? 'http://localhost:5173' : 'https://ummati.pro'));
 
 // Vérifier que les variables Google OAuth sont définies
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -160,10 +167,20 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
   console.error('⚠️  L\'authentification Google ne fonctionnera pas sans ces variables');
 }
 
+// Logs de configuration Google OAuth
+console.log('=== CONFIGURATION GOOGLE OAUTH ===');
+console.log('BACKEND_URL:', BACKEND_URL);
+console.log('FRONTEND_URL:', FRONTEND_URL);
+const callbackURL = `${BACKEND_URL}/auth/google/callback`;
+console.log('Callback URL configuré:', callbackURL);
+console.log('GOOGLE_CLIENT_ID:', GOOGLE_CLIENT_ID ? '✅ Défini' : '❌ Manquant');
+console.log('GOOGLE_CLIENT_SECRET:', GOOGLE_CLIENT_SECRET ? '✅ Défini' : '❌ Manquant');
+console.log('===================================');
+
 passport.use(new GoogleStrategy({
   clientID: GOOGLE_CLIENT_ID,
   clientSecret: GOOGLE_CLIENT_SECRET,
-  callbackURL: `${BACKEND_URL}/auth/google/callback`,
+  callbackURL: callbackURL,
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     // On crée ou récupère l'utilisateur dans la base
@@ -219,13 +236,26 @@ app.get('/auth/status', authenticateJWT, async (req, res) => {
 });
 
 // Route pour initier l'authentification Google
-app.get('/auth/google',
-  passport.authenticate('google', { scope: ['profile', 'email'] })
-);
+app.get('/auth/google', (req, res, next) => {
+  console.log('🔐 Démarrage authentification Google');
+  console.log('Callback URL attendu par Google:', callbackURL);
+  passport.authenticate('google', { scope: ['profile', 'email'] })(req, res, next);
+});
 // Route de callback après l'authentification Google
-app.get('/auth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: '/login' }),
-  (req, res) => {
+app.get('/auth/google/callback', (req, res, next) => {
+  console.log('🔄 Callback Google reçu');
+  console.log('URL complète de la requête:', req.protocol + '://' + req.get('host') + req.originalUrl);
+  console.log('Query params:', req.query);
+  passport.authenticate('google', { session: false, failureRedirect: '/login' })(req, res, (err) => {
+    if (err) {
+      console.error('❌ Erreur authentification Google:', err);
+      return res.redirect(`${FRONTEND_URL}/login?error=auth_failed`);
+    }
+    if (!req.user) {
+      console.error('❌ Aucun utilisateur après authentification');
+      return res.redirect(`${FRONTEND_URL}/login?error=no_user`);
+    }
+    console.log('✅ Authentification réussie pour:', req.user.email);
     // Générer un JWT pour l'utilisateur connecté
     const token = jwt.sign(
       { id: req.user.id, email: req.user.email },
@@ -233,9 +263,10 @@ app.get('/auth/google/callback',
       { expiresIn: '7d' }
     );
     // Rediriger vers le frontend avec le token en query
+    console.log('🔄 Redirection vers:', `${FRONTEND_URL}/auth/callback?token=${token.substring(0, 20)}...`);
     res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
-  }
-);
+  });
+});
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
