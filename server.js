@@ -98,7 +98,6 @@ const allowedOrigins = [
   'https://ummati.pro',
   'https://appislamic.onrender.com',
   'http://localhost:5173',
-  'http://localhost:3000',
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
 
@@ -152,7 +151,7 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
 // Détection automatique de l'environnement de développement
 const isDevelopment = process.env.NODE_ENV !== 'production' || process.env.PORT === '3000';
-const BACKEND_URL = process.env.BACKEND_URL || (isDevelopment ? 'http://localhost:3000' : 'https://appislamic.onrender.com');
+const BACKEND_URL = process.env.BACKEND_URL || 'https://appislamic.onrender.com';
 const FRONTEND_URL = process.env.FRONTEND_URL || (isDevelopment ? 'http://localhost:5173' : 'https://ummati.pro');
 
 // Vérifier que les variables Google OAuth sont définies

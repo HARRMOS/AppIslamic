@@ -25,9 +25,7 @@ setInterval(async () => {
 }, 5 * 60 * 1000);
 
 // Fonction pour synchroniser un utilisateur vers la base MySQL (avec fetch)
-const SQL_API_URL = process.env.SQL_API_URL || (process.env.NODE_ENV === 'production'
-  ? 'https://appislamic-sql.onrender.com/api/users'
-  : 'http://localhost:3000/api/users');
+const SQL_API_URL = process.env.SQL_API_URL || 'https://appislamic.onrender.com/api/users';
 
 const syncUserToMySQL = async (googleId, name, email) => {
   try {
