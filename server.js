@@ -99,8 +99,6 @@ const allowedOrigins = [
   'https://appislamic.onrender.com',
   'http://localhost:5173',
   'http://localhost:3000',
-  "capacitor://localhost",
-  "http://localhost",
   // Ajoute ici d'autres domaines si besoin (Vercel, Netlify, etc.)
 ];
 
@@ -120,45 +118,24 @@ const corsOptions = {
   origin: function (origin, callback) {
     console.log('CORS origin:', origin);
     // Autorise les requêtes sans origin (ex: mobile, redirection OAuth)
-    // Autorise aussi les origines Capacitor (capacitor://localhost, capacitor://, etc.)
-    if (!origin || 
-        allowedOrigins.includes(origin) ||
-        origin.startsWith('capacitor://') ||
-        origin.startsWith('ionic://') ||
-        origin.includes('localhost') ||
-        origin.includes('127.0.0.1')) {
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
     }
   },
-  credentials: true, // Important pour les cookies HttpOnly si utilisés
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
 };
 app.use(cors(corsOptions));
 
 // Ajouter le middleware pour parser le JSON
 app.use(express.json());
 
-// Configure Google OAuth strategy
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
-
-// Utiliser TOUJOURS Render (pas de localhost)
-const BACKEND_URL = process.env.BACKEND_URL || 'https://appislamic.onrender.com';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://ummati.pro';
-const isDevelopment = false; // Toujours en production (Render)
-
 // Debug de l'environnement
 console.log('=== ENVIRONMENT DEBUG ===');
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('RENDER:', process.env.RENDER);
 console.log('PORT:', process.env.PORT);
-console.log('BACKEND_URL:', BACKEND_URL);
-console.log('FRONTEND_URL:', FRONTEND_URL);
-console.log('⚠️ NOTE: Configuration utilise TOUJOURS Render (pas de localhost)');
 console.log('========================');
 
 
@@ -167,14 +144,23 @@ console.log('========================');
 
 // Ajout de logs pour la configuration de session
 
+
+// Configure Google OAuth strategy
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || 'une_clé_ultra_secrète';
+// Détection automatique de l'environnement de développement
+const isDevelopment = process.env.NODE_ENV !== 'production' || process.env.PORT === '3000';
+const BACKEND_URL = process.env.BACKEND_URL || (isDevelopment ? 'http://localhost:3000' : 'https://appislamic.onrender.com');
+const FRONTEND_URL = process.env.FRONTEND_URL || (isDevelopment ? 'http://localhost:5173' : 'https://ummati.pro');
+
 // Vérifier que les variables Google OAuth sont définies
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
   console.error('⚠️  ERREUR: GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET doivent être définis dans les variables d\'environnement');
   console.error('⚠️  L\'authentification Google ne fonctionnera pas sans ces variables');
 }
 
-// GoogleStrategy sera configuré dynamiquement dans la route /auth/google
-// On garde une instance par défaut pour la compatibilité
 passport.use(new GoogleStrategy({
   clientID: GOOGLE_CLIENT_ID,
   clientSecret: GOOGLE_CLIENT_SECRET,
@@ -190,15 +176,6 @@ passport.use(new GoogleStrategy({
 }));
 
 app.use(passport.initialize());
-
-// Endpoint de health check pour vérifier la connectivité
-app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    server: 'running'
-  });
-});
 
 // Initialiser Passport et la gestion de session
 
@@ -243,32 +220,9 @@ app.get('/auth/status', authenticateJWT, async (req, res) => {
 });
 
 // Route pour initier l'authentification Google
-app.get('/auth/google', (req, res, next) => {
-  // Détecter si c'est une requête mobile
-  const platform = req.query.platform;
-  const isMobile = platform === 'mobile' || 
-                   req.headers['user-agent']?.includes('Capacitor') ||
-                   req.headers['user-agent']?.includes('Mobile');
-  
-  // Pour mobile, utiliser le redirect URI spécial Google
-  // Format: com.googleusercontent.apps.<CLIENT_ID>:/auth/callback
-  // Extraire l'ID du client (partie avant .apps.googleusercontent.com)
-  const clientIdOnly = GOOGLE_CLIENT_ID.split('.apps.googleusercontent.com')[0];
-  const redirectUriMobile = `com.googleusercontent.apps.${clientIdOnly}:/auth/callback`;
-  const redirectUriWeb = `${BACKEND_URL}/auth/google/callback`;
-  
-  const redirectUri = isMobile ? redirectUriMobile : redirectUriWeb;
-  
-  console.log('🔐 [OAuth] Platform:', platform || 'web');
-  console.log('🔐 [OAuth] Redirect URI:', redirectUri);
-  
-  // Passer le redirect URI à Passport
-  passport.authenticate('google', { 
-    scope: ['profile', 'email'],
-    callbackURL: redirectUri,
-    state: req.query.state
-  })(req, res, next);
-});
+app.get('/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'] })
+);
 // Route de callback après l'authentification Google
 app.get('/auth/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: '/login' }),
@@ -279,294 +233,10 @@ app.get('/auth/google/callback',
       JWT_SECRET,
       { expiresIn: '7d' }
     );
-    
-    // Détecter si la requête vient d'une app mobile
-    // Vérifier plusieurs sources : User-Agent, Referer, Origin, et paramètre state
-    const userAgent = req.headers['user-agent'] || '';
-    const referer = req.headers['referer'] || '';
-    const origin = req.headers['origin'] || '';
-    const state = req.query.state || '';
-    
-    console.log('🔍 [OAuth Callback] Détection mobile:', {
-      userAgent: userAgent.substring(0, 100),
-      referer: referer.substring(0, 100),
-      origin: origin.substring(0, 100),
-      state: state.substring(0, 50)
-    });
-    
-    const isMobileApp = 
-      userAgent.includes('Capacitor') || 
-      userAgent.includes('Ummati') ||
-      userAgent.includes('Mobile') ||
-      referer.includes('capacitor://') ||
-      referer.includes('ummati://') ||
-      origin.includes('capacitor://') ||
-      origin.includes('ummati://') ||
-      state.includes('mobile') ||
-      state.includes('native');
-    
-    console.log('📱 [OAuth Callback] isMobileApp:', isMobileApp);
-    console.log('🔧 [OAuth Callback] BACKEND_URL actuel:', BACKEND_URL);
-    console.log('🔧 [OAuth Callback] Toujours Render (pas de localhost)');
-    
-    // Si c'est une app mobile, rediriger vers la page HTML qui sauvegarde le token
-    // Cette page sauvegardera le token dans localStorage et fermera le navigateur
-    // L'app détectera le token via appStateChange quand elle revient au premier plan
-    if (isMobileApp) {
-      // App mobile - rediriger vers la page HTML qui sauvegarde le token
-      const mobileCallbackUrl = `${BACKEND_URL}/auth/mobile-callback?token=${encodeURIComponent(token)}`;
-      console.log('🔗 [OAuth Callback] App mobile - redirection vers mobile-callback:', mobileCallbackUrl.substring(0, 80) + '...');
-      res.redirect(mobileCallbackUrl);
-    } else {
-      // App web - rediriger vers le frontend
-      console.log('🌐 [OAuth Callback] App web - redirection vers frontend:', FRONTEND_URL);
-      res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
-    }
+    // Rediriger vers le frontend avec le token en query
+    res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
   }
 );
-
-// Route pour échanger le code d'autorisation OAuth contre un JWT (pour apps mobiles avec @byteowls/capacitor-oauth2)
-app.post('/auth/google/exchange', async (req, res) => {
-  try {
-    const { code } = req.body;
-    
-    if (!code) {
-      return res.status(400).json({ error: 'Code d\'autorisation manquant' });
-    }
-    
-    console.log('🔄 [OAuth Exchange] Échange du code contre un token...');
-    
-    // Échanger le code contre un access token via Google
-    // Extraire l'ID du client (partie avant .apps.googleusercontent.com)
-    const clientIdOnly = GOOGLE_CLIENT_ID.split('.apps.googleusercontent.com')[0];
-    const redirectUriMobile = `com.googleusercontent.apps.${clientIdOnly}:/auth/callback`;
-    
-    console.log('🔄 [OAuth Exchange] Client ID:', clientIdOnly);
-    console.log('🔄 [OAuth Exchange] Redirect URI:', redirectUriMobile);
-    
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        code: code,
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: redirectUriMobile,
-        grant_type: 'authorization_code',
-      }),
-    });
-    
-    if (!tokenResponse.ok) {
-      const error = await tokenResponse.text();
-      console.error('❌ [OAuth Exchange] Erreur Google:', error);
-      return res.status(400).json({ error: 'Échec de l\'échange du code', details: error });
-    }
-    
-    const tokenData = await tokenResponse.json();
-    const accessToken = tokenData.access_token;
-    
-    if (!accessToken) {
-      return res.status(400).json({ error: 'Access token non reçu de Google' });
-    }
-    
-    // Récupérer les informations du profil utilisateur
-    const profileResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-    
-    if (!profileResponse.ok) {
-      return res.status(400).json({ error: 'Échec de la récupération du profil' });
-    }
-    
-    const profile = await profileResponse.json();
-    
-    // Créer ou récupérer l'utilisateur
-    const user = await findOrCreateUser(profile.id, profile.name, profile.email);
-    
-    // Générer un JWT pour l'utilisateur
-    const jwtToken = jwt.sign(
-      { id: user.id, email: user.email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-    
-    console.log('✅ [OAuth Exchange] Token JWT généré pour:', user.email);
-    
-    res.json({ 
-      token: jwtToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name || profile.name,
-      }
-    });
-  } catch (error) {
-    console.error('❌ [OAuth Exchange] Erreur:', error);
-    res.status(500).json({ error: 'Erreur lors de l\'échange du code', details: error.message });
-  }
-});
-
-// Route pour le callback mobile - page HTML qui sauvegarde le token et ferme le navigateur
-app.get('/auth/mobile-callback', (req, res) => {
-  const token = req.query.token;
-  if (!token) {
-    return res.status(400).send('Token manquant');
-  }
-  
-  // Échapper le token pour éviter les problèmes de syntaxe
-  const escapedToken = String(token).replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
-  
-  // Page HTML qui sauvegarde le token dans localStorage et ferme le navigateur
-  // L'app détectera le token via appStateChange quand elle revient au premier plan
-  res.send(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Connexion réussie</title>
-      <style>
-        body {
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          margin: 0;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
-          text-align: center;
-          padding: 2rem;
-        }
-        .spinner {
-          border: 4px solid rgba(255,255,255,0.3);
-          border-top: 4px solid white;
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
-          margin: 0 auto 1rem;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="spinner"></div>
-      <h2>Connexion réussie !</h2>
-      <p>Fermeture en cours...</p>
-      <script>
-        (async function() {
-          const token = '${escapedToken}';
-          
-          console.log('🔐 [Callback] Sauvegarde du token...');
-          console.log('🔐 [Callback] Token reçu:', token.substring(0, 30) + '...');
-          
-          // Sauvegarder dans localStorage
-          try {
-            localStorage.setItem('jwt', token);
-            const saved = localStorage.getItem('jwt');
-            console.log('✅ [Callback] Token sauvegardé dans localStorage:', saved ? saved.substring(0, 30) + '...' : 'ERREUR');
-          } catch (e) {
-            console.error('❌ [Callback] Erreur localStorage:', e);
-          }
-          
-          // Essayer de sauvegarder dans Preferences via Capacitor (si disponible)
-          // IMPORTANT: Dans le navigateur in-app, Capacitor peut ne pas être disponible
-          // On va essayer plusieurs méthodes
-          let savedInPreferences = false;
-          
-          // Méthode 1: Via window.Capacitor (si disponible dans le navigateur in-app)
-          try {
-            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
-              await window.Capacitor.Plugins.Preferences.set({
-                key: 'jwt',
-                value: token
-              });
-              console.log('✅ [Callback] Token sauvegardé dans Preferences (méthode 1)');
-              savedInPreferences = true;
-            }
-          } catch (e) {
-            console.log('⚠️ [Callback] Méthode 1 échouée:', e);
-          }
-          
-          // Méthode 2: Via Capacitor global (si disponible)
-          if (!savedInPreferences) {
-            try {
-              if (typeof Capacitor !== 'undefined' && Capacitor.Plugins && Capacitor.Plugins.Preferences) {
-                await Capacitor.Plugins.Preferences.set({
-                  key: 'jwt',
-                  value: token
-                });
-                console.log('✅ [Callback] Token sauvegardé dans Preferences (méthode 2)');
-                savedInPreferences = true;
-              }
-            } catch (e) {
-              console.log('⚠️ [Callback] Méthode 2 échouée:', e);
-            }
-          }
-          
-          // Si on n'a pas pu sauvegarder dans Preferences, on affiche un message
-          if (!savedInPreferences) {
-            console.log('⚠️ [Callback] Impossible de sauvegarder dans Preferences - le token est dans localStorage uniquement');
-            console.log('ℹ️ [Callback] L\'app devra vérifier localStorage via appStateChange');
-          }
-          
-          // Essayer aussi de rediriger vers le deep link pour déclencher appUrlOpen
-          // Si ça ne fonctionne pas, appStateChange détectera le token dans localStorage
-          setTimeout(() => {
-            try {
-              // Essayer de rediriger vers le deep link
-              const deepLink = 'ummati://auth/callback?token=' + encodeURIComponent(token);
-              console.log('🔗 [Callback] Tentative de redirection vers deep link:', deepLink.substring(0, 50) + '...');
-              
-              // Essayer de fermer le navigateur d'abord, puis rediriger
-              try {
-                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                  window.Capacitor.Plugins.Browser.close().then(() => {
-                    console.log('✅ [Callback] Navigateur fermé, redirection vers deep link...');
-                    // Après fermeture, essayer la redirection
-                    setTimeout(() => {
-                      try {
-                        window.location.href = deepLink;
-                      } catch (e) {
-                        console.log('⚠️ [Callback] Impossible de rediriger vers deep link:', e);
-                      }
-                    }, 300);
-                  }).catch((e) => {
-                    console.log('⚠️ [Callback] Erreur lors de la fermeture du navigateur, redirection directe:', e);
-                    // Si la fermeture échoue, essayer quand même la redirection
-                    try {
-                      window.location.href = deepLink;
-                    } catch (e2) {
-                      console.log('⚠️ [Callback] Impossible de rediriger vers deep link:', e2);
-                    }
-                  });
-                } else {
-                  // Si Capacitor n'est pas disponible, essayer quand même la redirection
-                  console.log('⚠️ [Callback] Capacitor non disponible, redirection directe vers deep link');
-                  window.location.href = deepLink;
-                }
-              } catch (e) {
-                console.log('⚠️ [Callback] Erreur lors de la fermeture/redirection:', e);
-              }
-            } catch (e) {
-              console.log('⚠️ [Callback] Erreur lors de la redirection vers deep link:', e);
-            }
-          }, 500);
-        })();
-      </script>
-    </body>
-    </html>
-  `);
-});
 
 // Route de déconnexion
 app.get('/logout', (req, res) => {
@@ -1791,50 +1461,6 @@ app.put('/api/user/profile', authenticateJWT, async (req, res) => {
     console.log('userId:', userId);
     console.log('username:', username);
     console.log('profile_picture:', profile_picture ? '[image]' : null);
-    
-    // Vérifier si la colonne profile_picture existe dans la table users
-    let profilePictureColumnExists = false;
-    try {
-      const [columns] = await mysqlPool.execute(
-        `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'profile_picture'`
-      );
-      profilePictureColumnExists = columns.length > 0;
-    } catch (err) {
-      console.log('Erreur lors de la vérification de la colonne profile_picture:', err);
-    }
-    
-    // Si la colonne n'existe pas et qu'on essaie de la mettre à jour, la créer
-    if (profile_picture && !profilePictureColumnExists) {
-      try {
-        await mysqlPool.execute(
-          `ALTER TABLE users ADD COLUMN profile_picture LONGTEXT NULL`
-        );
-        console.log('Colonne profile_picture ajoutée à la table users (LONGTEXT)');
-        profilePictureColumnExists = true;
-      } catch (alterError) {
-        console.error('Erreur lors de l\'ajout de la colonne profile_picture:', alterError);
-        // On continue quand même, on ne mettra juste pas à jour profile_picture
-      }
-    }
-    
-    // Si la colonne existe mais est de type TEXT (trop petit), la modifier en LONGTEXT
-    if (profile_picture && profilePictureColumnExists) {
-      try {
-        const [columnInfo] = await mysqlPool.execute(
-          `SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'profile_picture'`
-        );
-        if (columnInfo.length > 0 && columnInfo[0].DATA_TYPE === 'text') {
-          await mysqlPool.execute(
-            `ALTER TABLE users MODIFY COLUMN profile_picture LONGTEXT NULL`
-          );
-          console.log('Colonne profile_picture modifiée en LONGTEXT');
-        }
-      } catch (alterError) {
-        console.error('Erreur lors de la modification de la colonne profile_picture:', alterError);
-        // On continue quand même
-      }
-    }
-    
     if (!username && !profile_picture) {
       return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour.' });
     }
@@ -1844,7 +1470,7 @@ app.put('/api/user/profile', authenticateJWT, async (req, res) => {
       fields.push('username = ?');
       values.push(username);
     }
-    if (profile_picture && profilePictureColumnExists) {
+    if (profile_picture) {
       fields.push('profile_picture = ?');
       values.push(profile_picture);
     }
@@ -1927,198 +1553,35 @@ app.post('/admin/bots/:botId/toggle', authenticateJWT, requireAdmin, async (req,
 });
 // Statistiques globales
 // ===================== ROUTES NASHEEDS =====================
-// Fonction pour créer la table nasheeds si elle n'existe pas
-async function ensureNasheedsTable() {
-  try {
-    await mysqlPool.execute('SELECT 1 FROM nasheeds LIMIT 1');
-    console.log('✅ [Backend] Table nasheeds existe');
-  } catch (tableError) {
-    if (tableError.code === 'ER_NO_SUCH_TABLE') {
-      console.log('⚠️ [Backend] Table nasheeds n\'existe pas, création...');
-      await mysqlPool.execute(`
-        CREATE TABLE IF NOT EXISTS nasheeds (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          title VARCHAR(255) NOT NULL COMMENT 'Titre du nasheed',
-          artist VARCHAR(255) DEFAULT NULL COMMENT 'Artiste/Chanteur',
-          audio_url VARCHAR(500) NOT NULL COMMENT 'URL de l''audio',
-          cover_image_url VARCHAR(500) DEFAULT NULL COMMENT 'URL de l''image de couverture',
-          description TEXT DEFAULT NULL COMMENT 'Description du nasheed',
-          duration INT DEFAULT NULL COMMENT 'Durée en secondes',
-          category VARCHAR(100) DEFAULT 'general' COMMENT 'Catégorie (general, praise, dua, etc.)',
-          language VARCHAR(50) DEFAULT 'ar' COMMENT 'Langue (ar, en, fr, etc.)',
-          is_active BOOLEAN DEFAULT TRUE COMMENT 'Nasheed actif ou non',
-          created_by VARCHAR(36) DEFAULT NULL COMMENT 'ID de l''admin qui a créé',
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          INDEX idx_category (category),
-          INDEX idx_language (language),
-          INDEX idx_is_active (is_active),
-          INDEX idx_created_at (created_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        COMMENT='Table des nasheeds disponibles dans la bibliothèque'
-      `);
-      console.log('✅ [Backend] Table nasheeds créée avec succès');
-    } else {
-      console.error('❌ [Backend] Erreur lors de la vérification de la table:', tableError);
-      throw tableError;
-    }
-  }
-}
-
 // Récupérer tous les nasheeds actifs
 app.get('/api/nasheeds', authenticateJWT, async (req, res) => {
   try {
-    console.log('📥 [Backend] Récupération nasheeds');
-    await ensureNasheedsTable();
     const [rows] = await mysqlPool.execute(
       'SELECT * FROM nasheeds WHERE is_active = TRUE ORDER BY created_at DESC'
     );
-    console.log('✅ [Backend] Nasheeds récupérés:', rows.length);
     res.json({ nasheeds: rows });
   } catch (error) {
-    console.error('❌ [Backend] Erreur récupération nasheeds:', error);
-    console.error('❌ [Backend] Erreur message:', error.message);
-    console.error('❌ [Backend] Erreur code:', error.code);
-    res.status(500).json({ 
-      message: 'Erreur serveur',
-      error: error.message,
-      code: error.code
-    });
+    console.error('Erreur récupération nasheeds:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
   }
 });
 
 // Ajouter un nasheed (admin seulement)
 app.post('/api/nasheeds', authenticateJWT, requireAdmin, async (req, res) => {
   try {
-    console.log('📤 [Backend] Ajout nasheed - Body:', req.body);
-    console.log('📤 [Backend] Ajout nasheed - User:', req.user);
-    
     const { title, artist, audio_url, cover_image_url, description, duration, category, language } = req.body;
     if (!title || !audio_url) {
       return res.status(400).json({ message: 'Titre et URL audio sont requis.' });
     }
-    
     const userId = req.user.id;
-    console.log('📤 [Backend] Ajout nasheed - UserId:', userId);
-    
-    // Vérifier que la table existe, sinon la créer
-    await ensureNasheedsTable();
-    
-    const values = [
-      title, 
-      artist || null, 
-      audio_url, 
-      cover_image_url || null, 
-      description || null, 
-      duration ? parseInt(duration) : null, 
-      category || 'general', 
-      language || 'ar', 
-      userId
-    ];
-    
-    console.log('📤 [Backend] Ajout nasheed - Values:', values);
-    
     const [result] = await mysqlPool.execute(
       'INSERT INTO nasheeds (title, artist, audio_url, cover_image_url, description, duration, category, language, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      values
+      [title, artist || null, audio_url, cover_image_url || null, description || null, duration || null, category || 'general', language || 'ar', userId]
     );
-    
-    console.log('✅ [Backend] Nasheed ajouté avec succès - ID:', result.insertId);
     res.json({ success: true, id: result.insertId, message: 'Nasheed ajouté avec succès' });
   } catch (error) {
-    console.error('❌ [Backend] Erreur ajout nasheed:', error);
-    console.error('❌ [Backend] Erreur stack:', error.stack);
-    console.error('❌ [Backend] Erreur message:', error.message);
-    console.error('❌ [Backend] Erreur code:', error.code);
-    res.status(500).json({ 
-      message: 'Erreur serveur', 
-      error: error.message,
-      code: error.code,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-
-// Route pour obtenir un token Spotify (proxy pour éviter d'exposer les credentials)
-app.post('/api/spotify/token', authenticateJWT, requireAdmin, async (req, res) => {
-  try {
-    const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-    const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-
-    console.log('🔐 [Spotify] Demande de token - Client ID présent:', !!SPOTIFY_CLIENT_ID, 'Client Secret présent:', !!SPOTIFY_CLIENT_SECRET);
-
-    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-      console.error('❌ [Spotify] Configuration manquante');
-      return res.status(500).json({ 
-        error: 'Configuration Spotify manquante. Veuillez configurer SPOTIFY_CLIENT_ID et SPOTIFY_CLIENT_SECRET dans les variables d\'environnement.',
-        message: 'Les credentials Spotify ne sont pas configurés dans le backend.'
-      });
-    }
-
-    // Obtenir un token d'accès Spotify via Client Credentials Flow
-    console.log('🔄 [Spotify] Demande de token à Spotify...');
-    const response = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64')
-      },
-      body: 'grant_type=client_credentials'
-    });
-
-    const responseText = await response.text();
-    console.log('📡 [Spotify] Réponse Spotify - Status:', response.status, 'OK:', response.ok);
-
-    if (!response.ok) {
-      let errorData;
-      try {
-        errorData = JSON.parse(responseText);
-      } catch {
-        errorData = { error: responseText || `HTTP ${response.status}` };
-      }
-      
-      console.error('❌ [Spotify] Erreur Spotify API:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData
-      });
-      
-      return res.status(response.status).json({ 
-        error: errorData.error || 'Erreur lors de l\'obtention du token Spotify',
-        message: errorData.error_description || errorData.error || `Erreur HTTP ${response.status}`,
-        details: errorData
-      });
-    }
-
-    let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (parseError) {
-      console.error('❌ [Spotify] Erreur parsing réponse:', parseError);
-      return res.status(500).json({ 
-        error: 'Erreur lors du parsing de la réponse Spotify',
-        message: 'Réponse invalide reçue de Spotify'
-      });
-    }
-
-    if (!data.access_token) {
-      console.error('❌ [Spotify] Token non présent dans la réponse:', data);
-      return res.status(500).json({ 
-        error: 'Token d\'accès non reçu',
-        message: 'La réponse de Spotify ne contient pas de token d\'accès'
-      });
-    }
-
-    console.log('✅ [Spotify] Token obtenu avec succès');
-    res.json(data);
-  } catch (error) {
-    console.error('❌ [Spotify] Erreur serveur:', error);
-    console.error('❌ [Spotify] Stack:', error.stack);
-    res.status(500).json({ 
-      error: 'Erreur serveur lors de l\'obtention du token Spotify',
-      message: error.message || 'Erreur inconnue',
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    console.error('Erreur ajout nasheed:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
   }
 });
 
@@ -2135,131 +1598,6 @@ app.put('/api/nasheeds/:id', authenticateJWT, requireAdmin, async (req, res) => 
   } catch (error) {
     console.error('Erreur modification nasheed:', error);
     res.status(500).json({ message: 'Erreur serveur' });
-  }
-});
-
-// ===================== ROUTES SPOTIFY USER AUTH =====================
-// Obtenir le Client ID Spotify (pour l'authentification utilisateur)
-app.get('/api/spotify/client-id', authenticateJWT, async (req, res) => {
-  try {
-    const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-    if (!SPOTIFY_CLIENT_ID) {
-      return res.status(500).json({ error: 'Spotify Client ID non configuré' });
-    }
-    res.json({ client_id: SPOTIFY_CLIENT_ID });
-  } catch (error) {
-    console.error('❌ [Spotify] Erreur récupération Client ID:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Route de callback Spotify (pour redirection depuis Spotify OAuth)
-// Cette route reçoit le callback de Spotify et redirige vers le frontend
-app.get('/spotify/callback', async (req, res) => {
-  try {
-    const { code, error } = req.query;
-    const FRONTEND_URL = process.env.FRONTEND_URL || 'https://ummati.pro';
-    
-    if (error) {
-      console.error('❌ [Spotify Callback] Erreur OAuth:', error);
-      // Rediriger vers le frontend avec l'erreur
-      return res.redirect(`${FRONTEND_URL}/spotify/callback?error=${encodeURIComponent(error)}`);
-    }
-
-    if (!code) {
-      console.error('❌ [Spotify Callback] Code manquant');
-      return res.redirect(`${FRONTEND_URL}/spotify/callback?error=no_code`);
-    }
-
-    console.log('✅ [Spotify Callback] Code reçu, redirection vers frontend');
-    // Rediriger vers le frontend avec le code
-    res.redirect(`${FRONTEND_URL}/spotify/callback?code=${code}`);
-  } catch (error) {
-    console.error('❌ [Spotify Callback] Erreur:', error);
-    const FRONTEND_URL = process.env.FRONTEND_URL || 'https://ummati.pro';
-    res.redirect(`${FRONTEND_URL}/spotify/callback?error=server_error`);
-  }
-});
-
-// Échanger un code d'autorisation contre un token utilisateur Spotify
-app.post('/api/spotify/user-token', authenticateJWT, async (req, res) => {
-  try {
-    const { code, redirect_uri } = req.body;
-    const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-    const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-
-    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-      return res.status(500).json({ error: 'Configuration Spotify manquante' });
-    }
-
-    if (!code || !redirect_uri) {
-      return res.status(400).json({ error: 'Code et redirect_uri requis' });
-    }
-
-    // Échanger le code contre un token
-    const response = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64')
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: redirect_uri,
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      return res.status(response.status).json({ error: errorData.error || 'Erreur lors de l\'échange du code' });
-    }
-
-    const tokenData = await response.json();
-    res.json(tokenData);
-  } catch (error) {
-    console.error('❌ [Spotify] Erreur échange token utilisateur:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Rafraîchir un token utilisateur Spotify
-app.post('/api/spotify/refresh-token', authenticateJWT, async (req, res) => {
-  try {
-    const { refresh_token } = req.body;
-    const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
-    const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
-
-    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
-      return res.status(500).json({ error: 'Configuration Spotify manquante' });
-    }
-
-    if (!refresh_token) {
-      return res.status(400).json({ error: 'refresh_token requis' });
-    }
-
-    const response = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`).toString('base64')
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refresh_token,
-      })
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      return res.status(response.status).json({ error: errorData.error || 'Erreur lors du rafraîchissement' });
-    }
-
-    const tokenData = await response.json();
-    res.json(tokenData);
-  } catch (error) {
-    console.error('❌ [Spotify] Erreur rafraîchissement token:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
